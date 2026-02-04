@@ -19,15 +19,23 @@
 
     <!-- 必須在 module 之前定義，否則 __firebase_config 未定義會導致整支腳本崩潰、頁面一直轉圈 -->
     <script>
-        // 請替換為您的 Firebase 專案設定（從 Firebase 主控台 > 專案設定 > 一般 > 您的應用程式 取得）
-        window.__firebase_config = JSON.stringify({
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
-        });
+        // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyA79wVeNHosKvVY2MI8GJuBdjVOa1RM0kM",
+  authDomain: "vote-system-4e0e1.firebaseapp.com",
+  projectId: "vote-system-4e0e1",
+  storageBucket: "vote-system-4e0e1.firebasestorage.app",
+  messagingSenderId: "498604096621",
+  appId: "1:498604096621:web:569a7964e7d7a9bcf85364"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
         window.__app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : 'voting-app-demo';
         window.__initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null;
     </script>
