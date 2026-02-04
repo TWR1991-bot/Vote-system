@@ -59,6 +59,17 @@
             lastSyncTime: null
         };
 
+        // 用來比對資料是否變更，避免不必要的 re-render 造成閃爍
+        let lastDataSnapshot = '';
+
+        function getDataSnapshot() {
+            return JSON.stringify({
+                polls: state.polls,
+                votes: state.votes,
+                votersList: state.votersList
+            });
+        }
+
         // --- 資料同步處理 ---
         async function syncData(forceRender = false) {
             if (!SCRIPT_URL || state.isSyncing) return;
@@ -82,10 +93,15 @@
                 state.isSyncing = false;
                 state.lastSyncTime = new Date().toLocaleTimeString();
 
-                // 只有在使用者沒在輸入，或是強制要求渲染時才更新 UI
-                if (!isTyping && !isEditing || forceRender) {
+                const newSnapshot = getDataSnapshot();
+                const dataChanged = newSnapshot !== lastDataSnapshot;
+                if (dataChanged) lastDataSnapshot = newSnapshot;
+
+                // 只有當「資料有變」或「強制渲染」時才 re-render，且不在輸入/編輯中才自動更新畫面
+                const shouldRender = forceRender || (dataChanged && !isTyping && !isEditing);
+                if (shouldRender) {
                     render();
-                } else {
+                } else if (dataChanged && (isTyping || isEditing)) {
                     console.log("使用者正在操作中，延遲更新畫面以防閃爍...");
                 }
             } catch (err) {
@@ -96,7 +112,7 @@
             }
         }
 
-        // 定時自動同步 (每 15 秒)
+        // 定時自動同步 (每 15 秒)，只有資料變更時才會 re-render，避免閃爍
         setInterval(() => syncData(false), 15000);
 
         // --- 核心操作函數 ---
@@ -139,7 +155,6 @@
         };
 
         async function postToSheet(payload) {
-            // 不再使用全頁面 loading，改用按鈕狀態或局部提示
             const originalTab = state.activeTab;
             try {
                 const response = await fetch(SCRIPT_URL, {
@@ -242,7 +257,7 @@
                     </div>
                 `;
             }
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
         }
 
         function renderLoginPage() {
@@ -314,7 +329,7 @@
                             <p class="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Last Sync</p>
                             <p class="text-[10px] text-slate-500 font-mono font-bold">${state.lastSyncTime || '--:--:--'}</p>
                         </div>
-                        <button onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-xs bg-slate-50 px-4 py-2.5 rounded-2xl flex items-center gap-2 transition-colors">
+                        <button type="button" onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-xs bg-slate-50 px-4 py-2.5 rounded-2xl flex items-center gap-2 transition-colors">
                             <i data-lucide="log-out" class="w-4 h-4"></i> 登出
                         </button>
                     </div>
@@ -325,14 +340,14 @@
         function renderTabs() {
             return `
                 <nav class="flex bg-white p-1.5 rounded-[1.8rem] shadow-sm border border-slate-100 mb-8 overflow-hidden">
-                    <button onclick="switchTab('voting')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
+                    <button type="button" onclick="switchTab('voting')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="activity" class="w-4 h-4"></i> 我要投票
                     </button>
-                    <button onclick="switchTab('manage')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
+                    <button type="button" onclick="switchTab('manage')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> 投票管理
                     </button>
                     ${state.currentUser === SUPER_ADMIN ? `
-                        <button onclick="switchTab('users')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}">
+                        <button type="button" onclick="switchTab('users')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}">
                             <i data-lucide="settings" class="w-4 h-4"></i> 人員工作檯
                         </button>
                     ` : ''}
@@ -360,7 +375,7 @@
                                 <h4 class="text-2xl font-black text-slate-800 mb-8 max-w-lg">${poll.question}</h4>
                                 <div class="grid gap-4">
                                     ${poll.options.map((opt, i) => `
-                                        <button onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 font-black transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300 opacity-60') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-50'}">
+                                        <button type="button" onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 font-black transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300 opacity-60') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-50'}">
                                             <span class="text-lg font-bold">${opt}</span>
                                             ${hasVoted && myVote?.optionIndex === i ? '<i data-lucide="check-circle" class="w-6 h-6"></i>' : ''}
                                         </button>
@@ -386,7 +401,7 @@
         function renderManageView() {
             return `
                 <div class="space-y-6">
-                    <button id="toggle-add-poll-btn" onclick="toggleAddPollUI()" class="w-full bg-blue-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-blue-100 transition-transform active:scale-95 flex items-center justify-center gap-2">
+                    <button type="button" id="toggle-add-poll-btn" onclick="toggleAddPollUI()" class="w-full bg-blue-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-blue-100 transition-transform active:scale-95 flex items-center justify-center gap-2">
                         <i data-lucide="${state.showAddPoll ? 'x' : 'plus'}"></i> ${state.showAddPoll ? '取消發布' : '發起全新投票主題'}
                     </button>
                     
@@ -427,7 +442,7 @@
                             <h4 class="text-xl font-black text-slate-800 mt-3 tracking-tight leading-snug">${poll.question}</h4>
                         </div>
                         ${isAdmin ? `
-                            <button onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
+                            <button type="button" onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
                                 ${poll.isEnded ? '重新開啟' : '封存投票'}
                             </button>
                         ` : ''}
@@ -435,7 +450,7 @@
                     <div class="flex items-center gap-4 text-xs font-bold text-slate-400 mb-6 border-b border-slate-50 pb-6">
                         <span class="flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> 累計參與: ${pollVotes.length} 人</span>
                         ${isAdmin ? `
-                            <button onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors">
+                            <button type="button" onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors">
                                 <i data-lucide="${showDetails ? 'eye-off' : 'eye'}" class="w-3 h-3"></i> ${showDetails ? '隱藏詳細名單' : '查看誰投什麼'}
                             </button>
                         ` : ''}
@@ -488,7 +503,7 @@
                                     <div class="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600 font-black text-lg shadow-sm">${v.name.charAt(0)}</div>
                                     <span class="font-black text-slate-700 tracking-tight">${v.name}</span>
                                 </div>
-                                <button onclick="handleDeleteVoter('${v.name}')" class="text-slate-200 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                                <button type="button" onclick="handleDeleteVoter('${v.name}')" class="text-slate-200 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
                             </div>
                         `).join('')}
                     </div>
