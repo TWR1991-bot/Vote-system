@@ -192,6 +192,11 @@
             await postToSheet({ action: 'togglePoll', pollId: id, isEnded: !status });
         };
 
+        window.handleDeletePoll = async (pollId) => {
+            if (!confirm("確定要刪除此投票嗎？刪除後無法復原，相關投票紀錄也會一併移除。")) return;
+            await postToSheet({ action: 'deletePoll', pollId });
+        };
+
         window.handleAddPoll = async (e) => {
             e.preventDefault();
             const question = document.getElementById('new-question').value;
@@ -358,14 +363,33 @@
         function renderVoterView() {
             const activePolls = state.polls.filter(p => !p.isEnded);
             const endedPolls = state.polls.filter(p => p.isEnded);
+            const isAdminViewOnly = state.currentUser === SUPER_ADMIN;
+
             return `
                 <section class="space-y-6">
                     <div class="flex items-center gap-3">
                         <div class="w-2 h-8 bg-green-500 rounded-full"></div>
                         <h3 class="text-xl font-black text-slate-800">正在進行的活動</h3>
+                        ${isAdminViewOnly ? '<span class="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[10px] font-black">管理員僅可查看</span>' : ''}
                     </div>
                     ${activePolls.length === 0 ? '<div class="p-20 text-center bg-white rounded-[3rem] text-slate-300 font-bold border-2 border-dashed border-slate-100">目前沒有進行中的投票活動</div>' : ''}
                     ${activePolls.map(poll => {
+                        if (isAdminViewOnly) {
+                            return `
+                                <div class="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-50 relative overflow-hidden">
+                                    <div class="absolute top-0 left-0 w-full h-2 bg-slate-400"></div>
+                                    <div class="absolute top-6 right-8 bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 shadow-sm"><i data-lucide="eye" class="w-3 h-3"></i> 僅可查看，不參與投票</div>
+                                    <h4 class="text-2xl font-black text-slate-800 mb-8 max-w-lg">${poll.question}</h4>
+                                    <div class="grid gap-4">
+                                        ${poll.options.map((opt, i) => `
+                                            <div class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 border-slate-100 bg-slate-50 text-slate-600 font-bold flex items-center">
+                                                <span class="text-lg">${opt}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }
                         const hasVoted = state.votes.some(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         const myVote = state.votes.find(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         return `
@@ -442,9 +466,14 @@
                             <h4 class="text-xl font-black text-slate-800 mt-3 tracking-tight leading-snug">${poll.question}</h4>
                         </div>
                         ${isAdmin ? `
-                            <button type="button" onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
-                                ${poll.isEnded ? '重新開啟' : '封存投票'}
-                            </button>
+                            <div class="flex items-center gap-2 flex-wrap justify-end">
+                                <button type="button" onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
+                                    ${poll.isEnded ? '重新開啟' : '結束投票'}
+                                </button>
+                                <button type="button" onclick="handleDeletePoll('${poll.id}')" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 border-red-100 text-red-600 hover:bg-red-50 transition-all flex items-center gap-1">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 刪除投票
+                                </button>
+                            </div>
                         ` : ''}
                     </div>
                     <div class="flex items-center gap-4 text-xs font-bold text-slate-400 mb-6 border-b border-slate-50 pb-6">
