@@ -3,142 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>企業內部投票系統</title>
+    <title>企業內部投票系統 (Google Sheets 版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons：使用明確的 UMD 路徑 -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
         .tab-active { @apply bg-blue-600 text-white shadow-lg; }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-900 min-h-screen">
-
-    <!-- 必須在 module 之前定義，否則 __firebase_config 未定義會導致整支腳本崩潰、頁面一直轉圈 -->
-    <script>
-        // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyA79wVeNHosKvVY2MI8GJuBdjVOa1RM0kM",
-  authDomain: "vote-system-4e0e1.firebaseapp.com",
-  projectId: "vote-system-4e0e1",
-  storageBucket: "vote-system-4e0e1.firebasestorage.app",
-  messagingSenderId: "498604096621",
-  appId: "1:498604096621:web:569a7964e7d7a9bcf85364"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-        window.__app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : 'voting-app-demo';
-        window.__initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null;
-    </script>
+<body class="bg-slate-50 text-slate-900 min-h-screen antialiased">
 
     <div id="app" class="max-w-4xl mx-auto px-4 py-8">
-        <!-- 內容將由 JavaScript 動態渲染 -->
-        <div class="flex items-center justify-center h-64">
-            <div class="animate-spin rounded-full h-12 w-12 border-t-4 border-blue-600 border-solid border-slate-200"></div>
+        <!-- 初始載入動畫 -->
+        <div class="flex flex-col items-center justify-center h-96 gap-6">
+            <div class="animate-spin rounded-full h-14 w-14 border-t-4 border-blue-600 border-solid border-slate-200"></div>
+            <div class="text-center">
+                <p class="text-slate-500 font-black text-lg">正在連接雲端試算表...</p>
+                <p class="text-slate-400 text-sm mt-1">首次啟動可能需要幾秒鐘</p>
+            </div>
         </div>
     </div>
 
     <script type="module">
-        // --- Firebase SDK 導入 ---
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        // --- 配置與初始化（安全讀取全域變數，避免 ReferenceError）---
-        let firebaseConfig;
-        try {
-            const configStr = typeof window.__firebase_config !== 'undefined' ? window.__firebase_config : '{}';
-            firebaseConfig = JSON.parse(configStr);
-        } catch (e) {
-            firebaseConfig = {};
-        }
-        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY') {
-            document.getElementById('app').innerHTML = `
-                <div class="min-h-[80vh] flex items-center justify-center p-4">
-                    <div class="bg-white w-full max-w-md p-10 rounded-[2.5rem] shadow-2xl border border-red-100 text-center">
-                        <div class="text-red-600 mb-4"><strong>尚未設定 Firebase</strong></div>
-                        <p class="text-slate-600 text-sm mb-4">請在 HTML 中搜尋 <code class="bg-slate-100 px-1 rounded">__firebase_config</code>，將 <code>YOUR_API_KEY</code>、<code>YOUR_PROJECT_ID</code> 等替換為您 Firebase 專案的實際設定值。</p>
-                        <p class="text-slate-500 text-xs">Firebase 主控台 → 專案設定 → 一般 → 您的應用程式</p>
-                    </div>
-                </div>
-            `;
-            throw new Error('Firebase config missing');
-        }
-
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'voting-app-demo';
+        // --- 設定串接網址 ---
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwWY9tfLlHs7NZ90Q32T4Uk4XjdNcNdhClItUzjUoscFQukZqb_JLV4fgkboGXhy_X8/exec"; 
 
         const SUPER_ADMIN = "Admin01";
         const ADMIN_PASSWORD = "76380260";
 
         // --- 全域狀態 ---
         let state = {
-            user: null,
-            currentUser: null,
             isLoggedIn: false,
-            activeTab: 'voting', // 'voting', 'manage', 'users'
+            currentUser: null,
+            activeTab: 'voting',
             polls: [],
             votes: [],
             votersList: [],
             showAddPoll: false,
-            showDetails: {} // 記錄哪個投票要看明細
+            showDetails: {},
+            loading: true,
+            isSyncing: false
         };
 
-        // --- 初始化 Auth (遵守 Rule 3) ---
-        const initAuth = async () => {
+        // --- 資料同步處理 ---
+        async function syncData() {
+            if (!SCRIPT_URL) return;
+            state.isSyncing = true;
             try {
-                if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
-                    await signInWithCustomToken(auth, window.__initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                const response = await fetch(`${SCRIPT_URL}?action=getData`);
+                const data = await response.json();
+                
+                state.polls = data.polls || [];
+                state.votes = data.votes || [];
+                state.votersList = data.voters || [];
+                state.loading = false;
+                state.isSyncing = false;
+                render();
             } catch (err) {
-                console.error("Auth error:", err);
+                console.error("同步失敗:", err);
+                state.loading = false;
+                state.isSyncing = false;
+                render();
             }
-        };
-
-        onAuthStateChanged(auth, (u) => {
-            state.user = u;
-            if (u) {
-                startListening();
-            }
-            render();
-        });
-
-        // --- 資料監聽 (遵守 Rule 1 & 2) ---
-        function startListening() {
-            if (!state.user) return;
-
-            // 監聽投票
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'polls'), (snap) => {
-                state.polls = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-                    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-                render();
-            }, (err) => console.error("Polls listener error:", err));
-
-            // 監聽投票紀錄
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'votes'), (snap) => {
-                state.votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                render();
-            }, (err) => console.error("Votes listener error:", err));
-
-            // 監聽人員名單
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'allowed_voters'), (snap) => {
-                state.votersList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                render();
-            }, (err) => console.error("Voters listener error:", err));
         }
+
+        // 定時自動同步 (每 10 秒)
+        setInterval(syncData, 10000);
 
         // --- 核心操作函數 ---
         window.handleLogin = (e) => {
@@ -152,17 +87,20 @@ const app = initializeApp(firebaseConfig);
                     state.currentUser = SUPER_ADMIN;
                 } else {
                     alert("管理員密碼錯誤");
+                    return;
                 }
             } else if (username) {
                 state.isLoggedIn = true;
                 state.currentUser = username;
             } else {
-                alert("請選擇帳號");
+                alert("請先選擇您的帳號名稱");
+                return;
             }
             render();
         };
 
         window.handleLogout = () => {
+            if(!confirm("確定要登出系統嗎？")) return;
             state.isLoggedIn = false;
             state.currentUser = null;
             state.activeTab = 'voting';
@@ -174,63 +112,79 @@ const app = initializeApp(firebaseConfig);
             render();
         };
 
-        window.handleVote = async (pollId, optionIndex) => {
-            if (!state.user) return;
-            const hasVoted = state.votes.some(v => v.pollId === pollId && v.voterName === state.currentUser);
-            if (hasVoted) return alert("您已投過票囉！");
-            
-            if (!confirm("確認要投下這一票嗎？")) return;
-
+        async function postToSheet(payload) {
+            state.loading = true;
+            render();
             try {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'votes'), {
-                    pollId, optionIndex, voterName: state.currentUser, timestamp: serverTimestamp()
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
                 });
-                alert("投票成功！");
-            } catch (err) { console.error(err); }
+                const result = await response.json();
+                if (result.status === 'success') {
+                    await syncData(); 
+                    return true;
+                }
+                return false;
+            } catch (err) {
+                console.error("傳送失敗:", err);
+                alert("連線不穩定，請檢查網路後重試");
+                state.loading = false;
+                render();
+                return false;
+            }
+        }
+
+        window.handleVote = async (pollId, optionIndex) => {
+            const hasVoted = state.votes.some(v => v.pollId === pollId && v.voterName === state.currentUser);
+            if (hasVoted) return alert("您對此主題已完成投票。");
+            if (!confirm("確認要投下這一票嗎？提交後無法修改。")) return;
+
+            const success = await postToSheet({
+                action: 'addVote',
+                pollId,
+                optionIndex,
+                voterName: state.currentUser
+            });
+            if (success) alert("投票已成功送達試算表！");
         };
 
         window.togglePollStatus = async (id, status) => {
-            if (!state.user) return;
-            try {
-                await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'polls', id), { isEnded: !status });
-            } catch (err) { console.error(err); }
+            const success = await postToSheet({ action: 'togglePoll', pollId: id, isEnded: !status });
+            if (success) console.log("投票狀態已更新");
         };
 
         window.handleAddPoll = async (e) => {
-            if (!state.user) return;
             e.preventDefault();
             const question = document.getElementById('new-question').value;
-            const optionInputs = document.querySelectorAll('.new-option-input');
-            const options = Array.from(optionInputs).map(i => i.value).filter(v => v.trim() !== "");
+            const options = Array.from(document.querySelectorAll('.new-option-input'))
+                                .map(i => i.value).filter(v => v.trim() !== "");
 
-            if (!question || options.length < 2) return alert("請填寫完整內容");
+            if (!question || options.length < 2) return alert("請填寫問題並提供至少兩個選項");
 
-            try {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'polls'), {
-                    question, options, isEnded: false, createdAt: serverTimestamp()
-                });
+            const success = await postToSheet({ action: 'addPoll', question, options });
+            if (success) {
                 state.showAddPoll = false;
-                render();
-            } catch (err) { console.error(err); }
+                alert("新投票已成功發布！");
+            }
         };
 
         window.handleAddVoter = async (e) => {
-            if (!state.user) return;
             e.preventDefault();
             const name = document.getElementById('new-voter-name').value;
             if (!name.trim()) return;
-            try {
-                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'allowed_voters'), { name: name.trim() });
+            if (state.votersList.some(v => v.name === name.trim())) return alert("名單中已有此人");
+            
+            const success = await postToSheet({ action: 'addVoter', name: name.trim() });
+            if (success) {
                 document.getElementById('new-voter-name').value = "";
-            } catch (err) { console.error(err); }
+                alert("人員授權成功");
+            }
         };
 
-        window.handleDeleteVoter = async (id) => {
-            if (!state.user) return;
-            if (!confirm("確定要移除此成員嗎？")) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'allowed_voters', id));
-            } catch (err) { console.error(err); }
+        window.handleDeleteVoter = async (name) => {
+            if (!confirm(`確定要移除 ${name} 的存取權限嗎？`)) return;
+            await postToSheet({ action: 'deleteVoter', name });
         };
 
         window.toggleDetails = (id) => {
@@ -238,56 +192,71 @@ const app = initializeApp(firebaseConfig);
             render();
         };
 
-        // 將 render 函數暴露給 window，解決 ReferenceError
-        window.render = render;
-
-        // --- 渲染 UI ---
+        // --- 渲染 UI 函數 ---
         function render() {
             const container = document.getElementById('app');
-            if (!container) return;
+            
+            if (state.loading && !state.isLoggedIn) {
+                syncData();
+                return;
+            }
+
             if (!state.isLoggedIn) {
                 container.innerHTML = renderLoginPage();
             } else {
                 container.innerHTML = `
                     ${renderHeader()}
                     ${renderTabs()}
-                    <div class="animate-fade-in">
+                    <div class="animate-fade-in space-y-8">
                         ${state.activeTab === 'voting' ? renderVoterView() : ''}
                         ${state.activeTab === 'manage' ? renderManageView() : ''}
                         ${state.activeTab === 'users' ? renderUsersView() : ''}
                     </div>
                 `;
             }
-            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+            lucide.createIcons();
         }
 
         function renderLoginPage() {
             const selectedUser = document.getElementById('login-username')?.value || "";
             return `
-                <div class="min-h-[80vh] flex items-center justify-center">
-                    <div class="bg-white w-full max-w-md p-10 rounded-[2.5rem] shadow-2xl border border-white animate-fade-in">
-                        <div class="text-center mb-8">
-                            <div class="bg-blue-600 w-20 h-20 rounded-[2rem] flex items-center justify-center mx-auto mb-6 shadow-xl">
+                <div class="min-h-[85vh] flex items-center justify-center p-4">
+                    <div class="bg-white w-full max-w-md p-10 rounded-[3rem] shadow-2xl border border-white animate-fade-in">
+                        <div class="text-center mb-10">
+                            <div class="bg-blue-600 w-20 h-20 rounded-[2.2rem] flex items-center justify-center mx-auto mb-6 shadow-xl shadow-blue-100">
                                 <i data-lucide="shield-check" class="text-white w-10 h-10"></i>
                             </div>
-                            <h2 class="text-3xl font-black text-slate-800">登入投票系統</h2>
+                            <h2 class="text-3xl font-black text-slate-800 tracking-tight">登入系統</h2>
+                            <div class="flex items-center justify-center gap-2 mt-2">
+                                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">後端狀態：連線中</p>
+                            </div>
                         </div>
                         <form onsubmit="handleLogin(event)" class="space-y-6">
                             <div>
-                                <label class="block text-sm font-bold text-slate-700 mb-2">選擇人員</label>
-                                <select id="login-username" required onchange="render()" class="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 bg-slate-50 font-semibold outline-none focus:border-blue-500 appearance-none">
-                                    <option value="">-- 請選擇帳號 --</option>
-                                    <option value="${SUPER_ADMIN}" ${selectedUser === SUPER_ADMIN ? 'selected' : ''}>【系統管理員】Admin01</option>
-                                    ${state.votersList.map(v => `<option value="${v.name}" ${selectedUser === v.name ? 'selected' : ''}>${v.name}</option>`).join('')}
-                                </select>
+                                <label class="block text-sm font-black text-slate-700 mb-2 ml-1">選擇人員名稱</label>
+                                <div class="relative">
+                                    <select id="login-username" required onchange="window.render()" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-bold outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer text-slate-700">
+                                        <option value="">-- 請點擊選擇帳號 --</option>
+                                        <option value="${SUPER_ADMIN}" ${selectedUser === SUPER_ADMIN ? 'selected' : ''}>【系統管理員】Admin01</option>
+                                        <optgroup label="全體授權人員">
+                                            ${state.votersList.map(v => `<option value="${v.name}" ${selectedUser === v.name ? 'selected' : ''}>${v.name}</option>`).join('')}
+                                        </optgroup>
+                                    </select>
+                                    <div class="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                        <i data-lucide="chevron-down" class="w-5 h-5"></i>
+                                    </div>
+                                </div>
                             </div>
                             ${selectedUser === SUPER_ADMIN ? `
                                 <div class="animate-fade-in">
-                                    <label class="block text-sm font-bold text-slate-700 mb-2">管理員密碼</label>
-                                    <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 bg-slate-50 font-mono outline-none focus:border-blue-500">
+                                    <label class="block text-sm font-black text-slate-700 mb-2 ml-1">管理員專屬密碼</label>
+                                    <input type="password" id="login-password" required placeholder="請輸入 8 位數密碼" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-mono outline-none focus:border-blue-500 focus:bg-white transition-all">
                                 </div>
                             ` : ''}
-                            <button type="submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-xl hover:bg-black transition-all">確認進入</button>
+                            <button type="submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-2xl hover:bg-black transition-all transform hover:-translate-y-1 active:scale-95 text-lg">
+                                確認進入系統
+                            </button>
                         </form>
                     </div>
                 </div>
@@ -296,20 +265,23 @@ const app = initializeApp(firebaseConfig);
 
         function renderHeader() {
             return `
-                <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white p-6 rounded-3xl shadow-sm border border-slate-100 gap-4">
-                    <div>
-                        <h1 class="text-2xl font-black text-slate-800 flex items-center gap-2">
-                            <i data-lucide="check-circle" class="text-blue-600"></i> 企業內部投票系統
-                        </h1>
-                        <div class="flex items-center gap-2 mt-2">
-                            <span class="text-slate-500 text-sm bg-slate-100 px-3 py-1 rounded-full font-bold">${state.currentUser}</span>
-                            <span class="${state.currentUser === SUPER_ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'} px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
-                                <i data-lucide="${state.currentUser === SUPER_ADMIN ? 'shield-check' : 'user-plus'}" class="w-3 h-3"></i>
-                                ${state.currentUser === SUPER_ADMIN ? '系統管理員' : '授權發起人'}
-                            </span>
+                <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="bg-blue-50 p-3 rounded-2xl">
+                            <i data-lucide="check-circle" class="text-blue-600 w-8 h-8"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-xl font-black text-slate-800 tracking-tight">企業內部投票系統</h1>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-slate-500 text-xs font-bold bg-slate-100 px-2.5 py-1 rounded-lg">${state.currentUser}</span>
+                                <span class="${state.currentUser === SUPER_ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'} px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1">
+                                    <i data-lucide="${state.currentUser === SUPER_ADMIN ? 'shield-check' : 'user-check'}" class="w-3 h-3"></i>
+                                    ${state.currentUser === SUPER_ADMIN ? '系統管理員' : '授權發起人'}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                    <button onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-sm bg-slate-50 px-4 py-2 rounded-xl flex items-center gap-2">
+                    <button onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-xs bg-slate-50 px-4 py-2.5 rounded-2xl flex items-center gap-2 transition-colors">
                         <i data-lucide="log-out" class="w-4 h-4"></i> 登出
                     </button>
                 </header>
@@ -318,15 +290,15 @@ const app = initializeApp(firebaseConfig);
 
         function renderTabs() {
             return `
-                <nav class="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 mb-8 overflow-hidden">
-                    <button onclick="switchTab('voting')" class="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-500 hover:bg-slate-50'}">
+                <nav class="flex bg-white p-1.5 rounded-[1.8rem] shadow-sm border border-slate-100 mb-8 overflow-hidden">
+                    <button onclick="switchTab('voting')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="activity" class="w-4 h-4"></i> 我要投票
                     </button>
-                    <button onclick="switchTab('manage')" class="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-500 hover:bg-slate-50'}">
+                    <button onclick="switchTab('manage')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> 投票管理
                     </button>
                     ${state.currentUser === SUPER_ADMIN ? `
-                        <button onclick="switchTab('users')" class="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}">
+                        <button onclick="switchTab('users')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}">
                             <i data-lucide="settings" class="w-4 h-4"></i> 人員工作檯
                         </button>
                     ` : ''}
@@ -339,20 +311,24 @@ const app = initializeApp(firebaseConfig);
             const endedPolls = state.polls.filter(p => p.isEnded);
             return `
                 <section class="space-y-6">
-                    <h3 class="text-2xl font-black text-slate-800 flex items-center gap-3"><div class="w-2 h-8 bg-green-500 rounded-full"></div> 進行中的投票</h3>
-                    ${activePolls.length === 0 ? '<div class="p-10 text-center bg-white rounded-[2rem] text-slate-300 font-bold">目前暫無活動</div>' : ''}
+                    <div class="flex items-center gap-3">
+                        <div class="w-2 h-8 bg-green-500 rounded-full"></div>
+                        <h3 class="text-xl font-black text-slate-800">正在進行的活動</h3>
+                    </div>
+                    ${activePolls.length === 0 ? '<div class="p-20 text-center bg-white rounded-[3rem] text-slate-300 font-bold border-2 border-dashed border-slate-100">目前沒有進行中的投票活動</div>' : ''}
                     ${activePolls.map(poll => {
                         const hasVoted = state.votes.some(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         const myVote = state.votes.find(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         return `
-                            <div class="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-50 relative overflow-hidden">
+                            <div class="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-50 relative overflow-hidden group">
                                 <div class="absolute top-0 left-0 w-full h-2 ${hasVoted ? 'bg-green-500' : 'bg-blue-500'}"></div>
-                                <h4 class="text-2xl font-black text-slate-800 mb-6">${poll.question}</h4>
-                                <div class="grid gap-3">
+                                ${hasVoted ? '<div class="absolute top-6 right-8 bg-green-100 text-green-700 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 shadow-sm"><i data-lucide="check-circle" class="w-3 h-3"></i> 已投票</div>' : ''}
+                                <h4 class="text-2xl font-black text-slate-800 mb-8 max-w-lg">${poll.question}</h4>
+                                <div class="grid gap-4">
                                     ${poll.options.map((opt, i) => `
-                                        <button onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-4 px-6 rounded-2xl text-left border-2 font-bold transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-100 text-slate-300') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50'}">
-                                            <span>${opt}</span>
-                                            ${hasVoted && myVote?.optionIndex === i ? '<i data-lucide="check-circle" class="w-5 h-5"></i>' : ''}
+                                        <button onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 font-black transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300 opacity-60') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-50'}">
+                                            <span class="text-lg">${opt}</span>
+                                            ${hasVoted && myVote?.optionIndex === i ? '<i data-lucide="check-circle" class="w-6 h-6"></i>' : ''}
                                         </button>
                                     `).join('')}
                                 </div>
@@ -361,7 +337,10 @@ const app = initializeApp(firebaseConfig);
                     }).join('')}
                     
                     ${endedPolls.length > 0 ? `
-                        <h3 class="text-2xl font-black text-slate-800 flex items-center gap-3 pt-8"><div class="w-2 h-8 bg-blue-500 rounded-full"></div> 已揭曉結果</h3>
+                        <div class="flex items-center gap-3 pt-12">
+                            <div class="w-2 h-8 bg-blue-600 rounded-full"></div>
+                            <h3 class="text-xl font-black text-slate-800">歷史投票結果</h3>
+                        </div>
                         <div class="grid gap-6">
                             ${endedPolls.map(poll => renderPollCard(poll, false)).join('')}
                         </div>
@@ -373,22 +352,23 @@ const app = initializeApp(firebaseConfig);
         function renderManageView() {
             return `
                 <div class="space-y-6">
-                    <div class="flex justify-between items-center">
-                        <h3 class="text-xl font-black">投票活動控管</h3>
-                        <button onclick="state.showAddPoll = !state.showAddPoll; render()" class="bg-blue-600 text-white px-5 py-2 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-blue-700">
-                            <i data-lucide="${state.showAddPoll ? 'trash-2' : 'plus'}" class="w-4 h-4"></i> ${state.showAddPoll ? '取消' : '發起投票'}
-                        </button>
-                    </div>
+                    <button onclick="state.showAddPoll = !state.showAddPoll; render()" class="w-full bg-blue-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-blue-100 transition-transform active:scale-95 flex items-center justify-center gap-2">
+                        <i data-lucide="${state.showAddPoll ? 'x' : 'plus'}"></i> ${state.showAddPoll ? '取消發布' : '發起全新投票主題'}
+                    </button>
                     ${state.showAddPoll ? `
-                        <div class="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50 animate-fade-in">
+                        <div class="bg-white p-10 rounded-[3rem] shadow-2xl border border-blue-50 animate-fade-in">
                             <form onsubmit="handleAddPoll(event)" class="space-y-6">
-                                <input type="text" id="new-question" placeholder="輸入投票主題..." class="w-full px-5 py-4 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold" required>
-                                <div class="space-y-3" id="options-container">
-                                    <input type="text" class="new-option-input w-full px-5 py-3 rounded-xl border-2 border-slate-100" placeholder="選項 1" required>
-                                    <input type="text" class="new-option-input w-full px-5 py-3 rounded-xl border-2 border-slate-100" placeholder="選項 2" required>
+                                <div class="space-y-2">
+                                    <label class="font-black text-slate-700 ml-1">投票主題問題</label>
+                                    <input type="text" id="new-question" placeholder="例如：本季最期待的團購商品？" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-black text-lg" required>
                                 </div>
-                                <button type="button" onclick="const i = document.createElement('input'); i.className='new-option-input w-full px-5 py-3 rounded-xl border-2 border-slate-100 mt-3'; i.placeholder='新選項'; document.getElementById('options-container').appendChild(i);" class="text-blue-600 font-black text-sm">+ 增加更多選項</button>
-                                <button type="submit" class="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg">發布投票</button>
+                                <div class="space-y-3" id="options-container">
+                                    <label class="font-black text-slate-700 ml-1">投票選項內容</label>
+                                    <input type="text" class="new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold" placeholder="選項 1" required>
+                                    <input type="text" class="new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold" placeholder="選項 2" required>
+                                </div>
+                                <button type="button" onclick="const i=document.createElement('input'); i.className='new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold mt-2'; i.placeholder='新選項內容'; document.getElementById('options-container').appendChild(i);" class="text-blue-600 font-black text-sm flex items-center gap-1 hover:bg-blue-50 px-3 py-1.5 rounded-lg">+ 增加更多選項</button>
+                                <button type="submit" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-200 hover:bg-black">正式發布並公開投票</button>
                             </form>
                         </div>
                     ` : ''}
@@ -403,29 +383,46 @@ const app = initializeApp(firebaseConfig);
             const pollVotes = state.votes.filter(v => v.pollId === poll.id);
             const showDetails = state.showDetails[poll.id];
             return `
-                <div class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                    <div class="flex justify-between items-start mb-4">
+                <div class="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 transition-all hover:shadow-md">
+                    <div class="flex justify-between items-start mb-6">
                         <div>
-                            <span class="text-[10px] uppercase font-black px-2 py-0.5 rounded-full ${poll.isEnded ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}">${poll.isEnded ? '已結束' : '進行中'}</span>
-                            <h4 class="text-lg font-black text-slate-800 mt-2">${poll.question}</h4>
+                            <span class="text-[10px] uppercase font-black px-3 py-1 rounded-full ${poll.isEnded ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}">${poll.isEnded ? '已結束揭曉' : '投票進行中'}</span>
+                            <h4 class="text-xl font-black text-slate-800 mt-3 tracking-tight leading-snug">${poll.question}</h4>
                         </div>
-                        ${isAdmin ? `<button onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-xs font-black px-4 py-2 rounded-xl border-2 ${poll.isEnded ? 'border-blue-100 text-blue-600' : 'border-orange-100 text-orange-600'}">${poll.isEnded ? '重新開啟' : '結束投票'}</button>` : ''}
+                        ${isAdmin ? `
+                            <button onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
+                                ${poll.isEnded ? '重新開啟' : '封存投票'}
+                            </button>
+                        ` : ''}
                     </div>
-                    <div class="flex items-center gap-4 text-xs font-bold text-slate-400 mb-4">
-                        <span>總票數: ${pollVotes.length}</span>
-                        ${isAdmin ? `<button onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1"><i data-lucide="${showDetails ? 'eye-off' : 'eye'}" class="w-3 h-3"></i> ${showDetails ? '隱藏名單' : '查看明細'}</button>` : ''}
+                    <div class="flex items-center gap-4 text-xs font-bold text-slate-400 mb-6 border-b border-slate-50 pb-6">
+                        <span class="flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> 累計參與: ${pollVotes.length} 人</span>
+                        ${isAdmin ? `
+                            <button onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1 hover:bg-blue-50 px-3 py-1 rounded-lg">
+                                <i data-lucide="${showDetails ? 'eye-off' : 'eye'}" class="w-3 h-3"></i> ${showDetails ? '隱藏詳細名單' : '查看誰投什麼'}
+                            </button>
+                        ` : ''}
                     </div>
                     ${(poll.isEnded || (isAdmin && showDetails)) ? `
-                        <div class="space-y-4 pt-4 border-t border-slate-50">
+                        <div class="space-y-5 animate-fade-in">
                             ${poll.options.map((opt, i) => {
-                                const count = pollVotes.filter(v => v.optionIndex === i).length;
+                                const optVotes = pollVotes.filter(v => v.optionIndex === i);
+                                const count = optVotes.length;
                                 const pct = pollVotes.length > 0 ? Math.round((count / pollVotes.length) * 100) : 0;
-                                const voters = pollVotes.filter(v => v.optionIndex === i).map(v => v.voterName);
                                 return `
-                                    <div class="space-y-1.5">
-                                        <div class="flex justify-between text-sm font-bold"><span>${opt}</span><span>${count} 票 (${pct}%)</span></div>
-                                        <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div class="bg-blue-500 h-full" style="width: ${pct}%"></div></div>
-                                        ${isAdmin && showDetails && voters.length > 0 ? `<div class="flex flex-wrap gap-1 mt-1">${voters.map(v => `<span class="bg-slate-50 text-[9px] px-1.5 py-0.5 rounded border border-slate-100 text-slate-400">${v}</span>`).join('')}</div>` : ''}
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between text-sm font-bold">
+                                            <span class="text-slate-700">${opt}</span>
+                                            <span class="text-slate-900 font-black">${count} 票 (${pct}%)</span>
+                                        </div>
+                                        <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                            <div class="bg-blue-600 h-full transition-all duration-1000 ease-out" style="width: ${pct}%"></div>
+                                        </div>
+                                        ${isAdmin && showDetails && count > 0 ? `
+                                            <div class="flex flex-wrap gap-1.5 pt-1">
+                                                ${optVotes.map(v => `<span class="bg-slate-50 text-[10px] px-2.5 py-1 rounded-lg border border-slate-100 text-slate-500 font-black flex items-center gap-1"><i data-lucide="user" class="w-2.5 h-2.5"></i> ${v.voterName}</span>`).join('')}
+                                            </div>
+                                        ` : ''}
                                     </div>
                                 `;
                             }).join('')}
@@ -437,17 +434,24 @@ const app = initializeApp(firebaseConfig);
 
         function renderUsersView() {
             return `
-                <div class="bg-white p-10 rounded-[2.5rem] shadow-sm border border-slate-100">
-                    <h3 class="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><i data-lucide="users" class="text-purple-500"></i> 人員工作檯</h3>
-                    <form onsubmit="handleAddVoter(event)" class="flex gap-3 mb-8">
-                        <input type="text" id="new-voter-name" placeholder="輸入人員姓名..." class="flex-1 px-5 py-3 rounded-xl border-2 border-slate-100 font-bold outline-none focus:border-purple-500">
-                        <button type="submit" class="bg-purple-600 text-white px-6 py-3 rounded-xl font-black hover:bg-purple-700">新增授權</button>
+                <div class="bg-white p-10 rounded-[3rem] shadow-sm border border-slate-100">
+                    <div class="mb-10">
+                        <h3 class="text-2xl font-black text-slate-800 flex items-center gap-2"><i data-lucide="shield-check" class="text-purple-600"></i> 人員權限管理檯</h3>
+                        <p class="text-slate-400 font-bold text-sm mt-1 ml-1">僅 Admin01 具備管理名單之權限，其餘成員僅具備發起投票權。</p>
+                    </div>
+                    <form onsubmit="handleAddVoter(event)" class="flex flex-col md:flex-row gap-4 mb-10">
+                        <input type="text" id="new-voter-name" placeholder="輸入欲授權的同仁姓名" class="flex-1 px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-black outline-none focus:border-purple-500 focus:bg-white transition-all shadow-inner" required>
+                        <button type="submit" class="bg-purple-600 text-white px-10 py-4 rounded-2xl font-black shadow-lg shadow-purple-50 hover:bg-purple-700 transition-all">新增並授權</button>
                     </form>
-                    <div class="divide-y divide-slate-100 border-2 border-slate-50 rounded-2xl overflow-hidden">
+                    <div class="divide-y divide-slate-100 border-2 border-slate-50 rounded-[2.2rem] overflow-hidden shadow-sm">
+                        ${state.votersList.length === 0 ? '<div class="p-20 text-center text-slate-300 font-black uppercase tracking-widest">目前名單內無任何人員</div>' : ''}
                         ${state.votersList.map(v => `
-                            <div class="p-4 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors">
-                                <span class="font-bold text-slate-700">${v.name}</span>
-                                <button onclick="handleDeleteVoter('${v.id}')" class="text-slate-300 hover:text-red-500 transition-all p-2"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                            <div class="p-5 flex justify-between items-center bg-white hover:bg-slate-50 transition-colors">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600 font-black text-lg shadow-sm">${v.name.charAt(0)}</div>
+                                    <span class="font-black text-slate-700 tracking-tight">${v.name}</span>
+                                </div>
+                                <button onclick="handleDeleteVoter('${v.name}')" class="text-slate-200 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
                             </div>
                         `).join('')}
                     </div>
@@ -455,10 +459,9 @@ const app = initializeApp(firebaseConfig);
             `;
         }
 
-        // 啟動系統
-        window.addEventListener('DOMContentLoaded', async () => {
-            await initAuth();
-        });
+        window.render = render;
+        render();
+
     </script>
 </body>
 </html>
