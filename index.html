@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>企業內部投票系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Lucide Icons：使用明確的 UMD 路徑 -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
         body { font-family: 'Noto Sans TC', sans-serif; }
@@ -16,6 +16,21 @@
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen">
+
+    <!-- 必須在 module 之前定義，否則 __firebase_config 未定義會導致整支腳本崩潰、頁面一直轉圈 -->
+    <script>
+        // 請替換為您的 Firebase 專案設定（從 Firebase 主控台 > 專案設定 > 一般 > 您的應用程式 取得）
+        window.__firebase_config = JSON.stringify({
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        });
+        window.__app_id = typeof window.__app_id !== 'undefined' ? window.__app_id : 'voting-app-demo';
+        window.__initial_auth_token = typeof window.__initial_auth_token !== 'undefined' ? window.__initial_auth_token : null;
+    </script>
 
     <div id="app" class="max-w-4xl mx-auto px-4 py-8">
         <!-- 內容將由 JavaScript 動態渲染 -->
@@ -30,12 +45,31 @@
         import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- 配置與初始化 ---
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // --- 配置與初始化（安全讀取全域變數，避免 ReferenceError）---
+        let firebaseConfig;
+        try {
+            const configStr = typeof window.__firebase_config !== 'undefined' ? window.__firebase_config : '{}';
+            firebaseConfig = JSON.parse(configStr);
+        } catch (e) {
+            firebaseConfig = {};
+        }
+        if (!firebaseConfig.apiKey || firebaseConfig.apiKey === 'YOUR_API_KEY') {
+            document.getElementById('app').innerHTML = `
+                <div class="min-h-[80vh] flex items-center justify-center p-4">
+                    <div class="bg-white w-full max-w-md p-10 rounded-[2.5rem] shadow-2xl border border-red-100 text-center">
+                        <div class="text-red-600 mb-4"><strong>尚未設定 Firebase</strong></div>
+                        <p class="text-slate-600 text-sm mb-4">請在 HTML 中搜尋 <code class="bg-slate-100 px-1 rounded">__firebase_config</code>，將 <code>YOUR_API_KEY</code>、<code>YOUR_PROJECT_ID</code> 等替換為您 Firebase 專案的實際設定值。</p>
+                        <p class="text-slate-500 text-xs">Firebase 主控台 → 專案設定 → 一般 → 您的應用程式</p>
+                    </div>
+                </div>
+            `;
+            throw new Error('Firebase config missing');
+        }
+
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'voting-app-demo';
+        const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'voting-app-demo';
 
         const SUPER_ADMIN = "Admin01";
         const ADMIN_PASSWORD = "76380260";
@@ -56,8 +90,8 @@
         // --- 初始化 Auth (遵守 Rule 3) ---
         const initAuth = async () => {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
+                if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+                    await signInWithCustomToken(auth, window.__initial_auth_token);
                 } else {
                     await signInAnonymously(auth);
                 }
@@ -202,6 +236,7 @@
         // --- 渲染 UI ---
         function render() {
             const container = document.getElementById('app');
+            if (!container) return;
             if (!state.isLoggedIn) {
                 container.innerHTML = renderLoginPage();
             } else {
@@ -215,7 +250,7 @@
                     </div>
                 `;
             }
-            lucide.createIcons();
+            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
         }
 
         function renderLoginPage() {
@@ -413,10 +448,9 @@
         }
 
         // 啟動系統
-        window.onload = async () => {
+        window.addEventListener('DOMContentLoaded', async () => {
             await initAuth();
-        };
-
+        });
     </script>
 </body>
 </html>
