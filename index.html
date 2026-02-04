@@ -14,14 +14,6 @@
         .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
         select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
-        
-        /* 防止點擊時的藍色框框 */
-        button:focus { outline: none; }
-        
-        /* 載入中的平滑過度 */
-        .sync-indicator {
-            transition: opacity 0.3s ease;
-        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen antialiased">
@@ -55,32 +47,12 @@
             showAddPoll: false,
             showDetails: {},
             loading: true,
-            isSyncing: false,
-            lastSyncTime: null
+            isSyncing: false
         };
 
-        // 用來比對資料是否變更，避免不必要的 re-render 造成閃爍
-        let lastDataSnapshot = '';
-
-        function getDataSnapshot() {
-            return JSON.stringify({
-                polls: state.polls,
-                votes: state.votes,
-                votersList: state.votersList
-            });
-        }
-
         // --- 資料同步處理 ---
-        async function syncData(forceRender = false) {
-            if (!SCRIPT_URL || state.isSyncing) return;
-
-            // 檢查使用者是否正在輸入，如果是，則跳過本次「自動重新渲染」
-            const activeEl = document.activeElement;
-            const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.tagName === 'SELECT');
-            
-            // 如果正在新增投票主題，也暫緩自動重新渲染
-            const isEditing = state.showAddPoll;
-
+        async function syncData() {
+            if (!SCRIPT_URL) return;
             state.isSyncing = true;
             try {
                 const response = await fetch(`${SCRIPT_URL}?action=getData`);
@@ -91,29 +63,17 @@
                 state.votersList = data.voters || [];
                 state.loading = false;
                 state.isSyncing = false;
-                state.lastSyncTime = new Date().toLocaleTimeString();
-
-                const newSnapshot = getDataSnapshot();
-                const dataChanged = newSnapshot !== lastDataSnapshot;
-                if (dataChanged) lastDataSnapshot = newSnapshot;
-
-                // 只有當「資料有變」或「強制渲染」時才 re-render，且不在輸入/編輯中才自動更新畫面
-                const shouldRender = forceRender || (dataChanged && !isTyping && !isEditing);
-                if (shouldRender) {
-                    render();
-                } else if (dataChanged && (isTyping || isEditing)) {
-                    console.log("使用者正在操作中，延遲更新畫面以防閃爍...");
-                }
+                render();
             } catch (err) {
                 console.error("同步失敗:", err);
                 state.loading = false;
                 state.isSyncing = false;
-                if (forceRender) render();
+                render();
             }
         }
 
-        // 定時自動同步 (每 15 秒)，只有資料變更時才會 re-render，避免閃爍
-        setInterval(() => syncData(false), 15000);
+        // 定時自動同步 (每 10 秒)
+        setInterval(syncData, 10000);
 
         // --- 核心操作函數 ---
         window.handleLogin = (e) => {
@@ -144,18 +104,17 @@
             state.isLoggedIn = false;
             state.currentUser = null;
             state.activeTab = 'voting';
-            state.showAddPoll = false;
             render();
         };
 
         window.switchTab = (tab) => {
             state.activeTab = tab;
-            state.showAddPoll = false; // 切換標籤時重置新增狀態
             render();
         };
 
         async function postToSheet(payload) {
-            const originalTab = state.activeTab;
+            state.loading = true;
+            render();
             try {
                 const response = await fetch(SCRIPT_URL, {
                     method: 'POST',
@@ -163,13 +122,15 @@
                 });
                 const result = await response.json();
                 if (result.status === 'success') {
-                    await syncData(true); // 完成操作後強制更新畫面
+                    await syncData(); 
                     return true;
                 }
                 return false;
             } catch (err) {
                 console.error("傳送失敗:", err);
-                alert("傳送失敗，請檢查網路連線");
+                alert("連線不穩定，請檢查網路後重試");
+                state.loading = false;
+                render();
                 return false;
             }
         }
@@ -189,17 +150,8 @@
         };
 
         window.togglePollStatus = async (id, status) => {
-            await postToSheet({ action: 'togglePoll', pollId: id, isEnded: !status });
-        };
-
-        window.handleDeletePoll = async (pollId) => {
-            if (!confirm("確定要刪除此投票嗎？刪除後無法復原，相關投票紀錄也會一併移除。")) return;
-            const success = await postToSheet({ action: 'deletePoll', pollId });
-            if (success) {
-                alert("投票已成功刪除！");
-            } else {
-                alert("刪除失敗。請確認：\n1. 網路連線正常\n2. 後端 Google Apps Script 已加入「刪除投票」的處理（見說明）");
-            }
+            const success = await postToSheet({ action: 'togglePoll', pollId: id, isEnded: !status });
+            if (success) console.log("投票狀態已更新");
         };
 
         window.handleAddPoll = async (e) => {
@@ -217,26 +169,21 @@
             }
         };
 
-        window.toggleAddPollUI = () => {
-            state.showAddPoll = !state.showAddPoll;
-            render();
-        };
-
         window.handleAddVoter = async (e) => {
             e.preventDefault();
-            const nameInput = document.getElementById('new-voter-name');
-            const name = nameInput.value.trim();
-            if (!name) return;
-            if (state.votersList.some(v => v.name === name)) return alert("名單中已有此人");
+            const name = document.getElementById('new-voter-name').value;
+            if (!name.trim()) return;
+            if (state.votersList.some(v => v.name === name.trim())) return alert("名單中已有此人");
             
-            const success = await postToSheet({ action: 'addVoter', name });
+            const success = await postToSheet({ action: 'addVoter', name: name.trim() });
             if (success) {
+                document.getElementById('new-voter-name').value = "";
                 alert("人員授權成功");
             }
         };
 
         window.handleDeleteVoter = async (name) => {
-            if (!confirm(`確定要移除 ${name} 的權限嗎？`)) return;
+            if (!confirm(`確定要移除 ${name} 的存取權限嗎？`)) return;
             await postToSheet({ action: 'deleteVoter', name });
         };
 
@@ -250,7 +197,7 @@
             const container = document.getElementById('app');
             
             if (state.loading && !state.isLoggedIn) {
-                syncData(true);
+                syncData();
                 return;
             }
 
@@ -260,14 +207,14 @@
                 container.innerHTML = `
                     ${renderHeader()}
                     ${renderTabs()}
-                    <div class="animate-fade-in space-y-8 pb-20">
+                    <div class="animate-fade-in space-y-8">
                         ${state.activeTab === 'voting' ? renderVoterView() : ''}
                         ${state.activeTab === 'manage' ? renderManageView() : ''}
                         ${state.activeTab === 'users' ? renderUsersView() : ''}
                     </div>
                 `;
             }
-            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+            lucide.createIcons();
         }
 
         function renderLoginPage() {
@@ -281,8 +228,8 @@
                             </div>
                             <h2 class="text-3xl font-black text-slate-800 tracking-tight">登入系統</h2>
                             <div class="flex items-center justify-center gap-2 mt-2">
-                                <span class="w-2 h-2 rounded-full bg-green-500"></span>
-                                <p class="text-slate-400 font-bold text-[10px] uppercase tracking-widest">後端狀態：連線中</p>
+                                <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                                <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">後端狀態：連線中</p>
                             </div>
                         </div>
                         <form onsubmit="handleLogin(event)" class="space-y-6">
@@ -290,7 +237,7 @@
                                 <label class="block text-sm font-black text-slate-700 mb-2 ml-1">選擇人員名稱</label>
                                 <div class="relative">
                                     <select id="login-username" required onchange="window.render()" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-bold outline-none focus:border-blue-500 focus:bg-white transition-all cursor-pointer text-slate-700">
-                                        <option value="">-- 請選擇帳號 --</option>
+                                        <option value="">-- 請點擊選擇帳號 --</option>
                                         <option value="${SUPER_ADMIN}" ${selectedUser === SUPER_ADMIN ? 'selected' : ''}>【系統管理員】Admin01</option>
                                         <optgroup label="全體授權人員">
                                             ${state.votersList.map(v => `<option value="${v.name}" ${selectedUser === v.name ? 'selected' : ''}>${v.name}</option>`).join('')}
@@ -304,7 +251,7 @@
                             ${selectedUser === SUPER_ADMIN ? `
                                 <div class="animate-fade-in">
                                     <label class="block text-sm font-black text-slate-700 mb-2 ml-1">管理員專屬密碼</label>
-                                    <input type="password" id="login-password" required placeholder="請輸入密碼" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-mono outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <input type="password" id="login-password" required placeholder="請輸入 8 位數密碼" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-50 bg-slate-50 font-mono outline-none focus:border-blue-500 focus:bg-white transition-all">
                                 </div>
                             ` : ''}
                             <button type="submit" class="w-full bg-slate-900 text-white font-black py-5 rounded-2xl shadow-2xl hover:bg-black transition-all transform hover:-translate-y-1 active:scale-95 text-lg">
@@ -326,7 +273,7 @@
                         <div>
                             <h1 class="text-xl font-black text-slate-800 tracking-tight">企業內部投票系統</h1>
                             <div class="flex items-center gap-2 mt-1">
-                                <span class="text-slate-500 text-[10px] font-bold bg-slate-100 px-2.5 py-1 rounded-lg">${state.currentUser}</span>
+                                <span class="text-slate-500 text-xs font-bold bg-slate-100 px-2.5 py-1 rounded-lg">${state.currentUser}</span>
                                 <span class="${state.currentUser === SUPER_ADMIN ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'} px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1">
                                     <i data-lucide="${state.currentUser === SUPER_ADMIN ? 'shield-check' : 'user-check'}" class="w-3 h-3"></i>
                                     ${state.currentUser === SUPER_ADMIN ? '系統管理員' : '授權發起人'}
@@ -334,15 +281,9 @@
                             </div>
                         </div>
                     </div>
-                    <div class="flex items-center gap-4">
-                        <div class="hidden md:block text-right">
-                            <p class="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">Last Sync</p>
-                            <p class="text-[10px] text-slate-500 font-mono font-bold">${state.lastSyncTime || '--:--:--'}</p>
-                        </div>
-                        <button type="button" onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-xs bg-slate-50 px-4 py-2.5 rounded-2xl flex items-center gap-2 transition-colors">
-                            <i data-lucide="log-out" class="w-4 h-4"></i> 登出
-                        </button>
-                    </div>
+                    <button onclick="handleLogout()" class="text-slate-400 hover:text-red-600 font-bold text-xs bg-slate-50 px-4 py-2.5 rounded-2xl flex items-center gap-2 transition-colors">
+                        <i data-lucide="log-out" class="w-4 h-4"></i> 登出
+                    </button>
                 </header>
             `;
         }
@@ -350,14 +291,14 @@
         function renderTabs() {
             return `
                 <nav class="flex bg-white p-1.5 rounded-[1.8rem] shadow-sm border border-slate-100 mb-8 overflow-hidden">
-                    <button type="button" onclick="switchTab('voting')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
+                    <button onclick="switchTab('voting')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'voting' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="activity" class="w-4 h-4"></i> 我要投票
                     </button>
-                    <button type="button" onclick="switchTab('manage')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
+                    <button onclick="switchTab('manage')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'manage' ? 'tab-active' : 'text-slate-400 hover:bg-slate-50'}">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> 投票管理
                     </button>
                     ${state.currentUser === SUPER_ADMIN ? `
-                        <button type="button" onclick="switchTab('users')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}">
+                        <button onclick="switchTab('users')" class="flex-1 py-4 rounded-2xl flex items-center justify-center gap-2 font-black transition-all ${state.activeTab === 'users' ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-50'}">
                             <i data-lucide="settings" class="w-4 h-4"></i> 人員工作檯
                         </button>
                     ` : ''}
@@ -368,33 +309,14 @@
         function renderVoterView() {
             const activePolls = state.polls.filter(p => !p.isEnded);
             const endedPolls = state.polls.filter(p => p.isEnded);
-            const isAdminViewOnly = state.currentUser === SUPER_ADMIN;
-
             return `
                 <section class="space-y-6">
                     <div class="flex items-center gap-3">
                         <div class="w-2 h-8 bg-green-500 rounded-full"></div>
                         <h3 class="text-xl font-black text-slate-800">正在進行的活動</h3>
-                        ${isAdminViewOnly ? '<span class="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-[10px] font-black">管理員僅可查看</span>' : ''}
                     </div>
                     ${activePolls.length === 0 ? '<div class="p-20 text-center bg-white rounded-[3rem] text-slate-300 font-bold border-2 border-dashed border-slate-100">目前沒有進行中的投票活動</div>' : ''}
                     ${activePolls.map(poll => {
-                        if (isAdminViewOnly) {
-                            return `
-                                <div class="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-50 relative overflow-hidden">
-                                    <div class="absolute top-0 left-0 w-full h-2 bg-slate-400"></div>
-                                    <div class="absolute top-6 right-8 bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-[10px] font-black flex items-center gap-1 shadow-sm"><i data-lucide="eye" class="w-3 h-3"></i> 僅可查看，不參與投票</div>
-                                    <h4 class="text-2xl font-black text-slate-800 mb-8 max-w-lg">${poll.question}</h4>
-                                    <div class="grid gap-4">
-                                        ${poll.options.map((opt, i) => `
-                                            <div class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 border-slate-100 bg-slate-50 text-slate-600 font-bold flex items-center">
-                                                <span class="text-lg">${opt}</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            `;
-                        }
                         const hasVoted = state.votes.some(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         const myVote = state.votes.find(v => v.pollId === poll.id && v.voterName === state.currentUser);
                         return `
@@ -404,8 +326,8 @@
                                 <h4 class="text-2xl font-black text-slate-800 mb-8 max-w-lg">${poll.question}</h4>
                                 <div class="grid gap-4">
                                     ${poll.options.map((opt, i) => `
-                                        <button type="button" onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 font-black transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300 opacity-60') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-50'}">
-                                            <span class="text-lg font-bold">${opt}</span>
+                                        <button onclick="handleVote('${poll.id}', ${i})" ${hasVoted ? 'disabled' : ''} class="w-full py-5 px-8 rounded-[1.5rem] text-left border-2 font-black transition-all flex justify-between items-center ${hasVoted ? (myVote?.optionIndex === i ? 'bg-green-50 border-green-200 text-green-700 shadow-sm' : 'bg-slate-50 border-slate-100 text-slate-300 opacity-60') : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50 hover:shadow-lg hover:shadow-blue-50'}">
+                                            <span class="text-lg">${opt}</span>
                                             ${hasVoted && myVote?.optionIndex === i ? '<i data-lucide="check-circle" class="w-6 h-6"></i>' : ''}
                                         </button>
                                     `).join('')}
@@ -430,30 +352,27 @@
         function renderManageView() {
             return `
                 <div class="space-y-6">
-                    <button type="button" id="toggle-add-poll-btn" onclick="toggleAddPollUI()" class="w-full bg-blue-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-blue-100 transition-transform active:scale-95 flex items-center justify-center gap-2">
+                    <button onclick="state.showAddPoll = !state.showAddPoll; render()" class="w-full bg-blue-600 text-white py-4 rounded-[1.5rem] font-black shadow-xl shadow-blue-100 transition-transform active:scale-95 flex items-center justify-center gap-2">
                         <i data-lucide="${state.showAddPoll ? 'x' : 'plus'}"></i> ${state.showAddPoll ? '取消發布' : '發起全新投票主題'}
                     </button>
-                    
                     ${state.showAddPoll ? `
                         <div class="bg-white p-10 rounded-[3rem] shadow-2xl border border-blue-50 animate-fade-in">
                             <form onsubmit="handleAddPoll(event)" class="space-y-6">
                                 <div class="space-y-2">
-                                    <label class="font-black text-slate-700 ml-1 text-sm">投票主題問題</label>
+                                    <label class="font-black text-slate-700 ml-1">投票主題問題</label>
                                     <input type="text" id="new-question" placeholder="例如：本季最期待的團購商品？" class="w-full px-6 py-4 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-black text-lg" required>
                                 </div>
                                 <div class="space-y-3" id="options-container">
-                                    <label class="font-black text-slate-700 ml-1 text-sm">投票選項內容 (至少填寫兩個)</label>
+                                    <label class="font-black text-slate-700 ml-1">投票選項內容</label>
                                     <input type="text" class="new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold" placeholder="選項 1" required>
                                     <input type="text" class="new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold" placeholder="選項 2" required>
                                 </div>
-                                <button type="button" onclick="const i=document.createElement('input'); i.className='new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold mt-2'; i.placeholder='新選項內容'; document.getElementById('options-container').appendChild(i);" class="text-blue-600 font-black text-sm flex items-center gap-1 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors">+ 增加更多選項</button>
-                                <button type="submit" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-200 hover:bg-black transition-colors">確認發布並公開投票</button>
+                                <button type="button" onclick="const i=document.createElement('input'); i.className='new-option-input w-full px-6 py-3 rounded-2xl border-2 border-slate-100 outline-none focus:border-blue-500 font-bold mt-2'; i.placeholder='新選項內容'; document.getElementById('options-container').appendChild(i);" class="text-blue-600 font-black text-sm flex items-center gap-1 hover:bg-blue-50 px-3 py-1.5 rounded-lg">+ 增加更多選項</button>
+                                <button type="submit" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-black text-lg shadow-xl shadow-slate-200 hover:bg-black">正式發布並公開投票</button>
                             </form>
                         </div>
                     ` : ''}
-                    
                     <div class="grid gap-6">
-                        ${state.polls.length === 0 ? '<div class="p-10 text-center text-slate-300 font-bold">暫無可管理的投票</div>' : ''}
                         ${state.polls.map(poll => renderPollCard(poll, true)).join('')}
                     </div>
                 </div>
@@ -471,20 +390,15 @@
                             <h4 class="text-xl font-black text-slate-800 mt-3 tracking-tight leading-snug">${poll.question}</h4>
                         </div>
                         ${isAdmin ? `
-                            <div class="flex items-center gap-2 flex-wrap justify-end">
-                                <button type="button" onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
-                                    ${poll.isEnded ? '重新開啟' : '封存投票'}
-                                </button>
-                                <button type="button" onclick="handleDeletePoll('${poll.id}')" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 border-red-100 text-red-600 hover:bg-red-50 transition-all flex items-center gap-1">
-                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> 刪除投票
-                                </button>
-                            </div>
+                            <button onclick="togglePollStatus('${poll.id}', ${poll.isEnded})" class="text-[10px] font-black px-4 py-2 rounded-xl border-2 transition-all ${poll.isEnded ? 'border-blue-100 text-blue-600 hover:bg-blue-50' : 'border-orange-100 text-orange-600 hover:bg-orange-50'}">
+                                ${poll.isEnded ? '重新開啟' : '封存投票'}
+                            </button>
                         ` : ''}
                     </div>
                     <div class="flex items-center gap-4 text-xs font-bold text-slate-400 mb-6 border-b border-slate-50 pb-6">
                         <span class="flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> 累計參與: ${pollVotes.length} 人</span>
                         ${isAdmin ? `
-                            <button type="button" onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1 hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors">
+                            <button onclick="toggleDetails('${poll.id}')" class="text-blue-600 ml-auto flex items-center gap-1 hover:bg-blue-50 px-3 py-1 rounded-lg">
                                 <i data-lucide="${showDetails ? 'eye-off' : 'eye'}" class="w-3 h-3"></i> ${showDetails ? '隱藏詳細名單' : '查看誰投什麼'}
                             </button>
                         ` : ''}
@@ -498,7 +412,7 @@
                                 return `
                                     <div class="space-y-2">
                                         <div class="flex justify-between text-sm font-bold">
-                                            <span class="text-slate-700 font-bold">${opt}</span>
+                                            <span class="text-slate-700">${opt}</span>
                                             <span class="text-slate-900 font-black">${count} 票 (${pct}%)</span>
                                         </div>
                                         <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -537,7 +451,7 @@
                                     <div class="w-10 h-10 rounded-2xl bg-purple-50 flex items-center justify-center text-purple-600 font-black text-lg shadow-sm">${v.name.charAt(0)}</div>
                                     <span class="font-black text-slate-700 tracking-tight">${v.name}</span>
                                 </div>
-                                <button type="button" onclick="handleDeleteVoter('${v.name}')" class="text-slate-200 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+                                <button onclick="handleDeleteVoter('${v.name}')" class="text-slate-200 hover:text-red-500 transition-all p-3 hover:bg-red-50 rounded-xl"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
                             </div>
                         `).join('')}
                     </div>
@@ -546,8 +460,7 @@
         }
 
         window.render = render;
-        // 初始啟動
-        window.onload = () => syncData(true);
+        render();
 
     </script>
 </body>
