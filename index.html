@@ -27,7 +27,7 @@
     <script type="module">
         // --- Firebase SDK 導入 ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // --- 配置與初始化 ---
@@ -53,10 +53,14 @@
             showDetails: {} // 記錄哪個投票要看明細
         };
 
-        // --- 初始化 Auth ---
+        // --- 初始化 Auth (遵守 Rule 3) ---
         const initAuth = async () => {
             try {
-                await signInAnonymously(auth);
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
             } catch (err) {
                 console.error("Auth error:", err);
             }
@@ -64,30 +68,34 @@
 
         onAuthStateChanged(auth, (u) => {
             state.user = u;
-            if (u) startListening();
+            if (u) {
+                startListening();
+            }
             render();
         });
 
-        // --- 資料監聽 ---
+        // --- 資料監聽 (遵守 Rule 1 & 2) ---
         function startListening() {
+            if (!state.user) return;
+
             // 監聽投票
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'polls'), (snap) => {
                 state.polls = snap.docs.map(d => ({ id: d.id, ...d.data() }))
                     .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
                 render();
-            });
+            }, (err) => console.error("Polls listener error:", err));
 
             // 監聽投票紀錄
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'votes'), (snap) => {
                 state.votes = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 render();
-            });
+            }, (err) => console.error("Votes listener error:", err));
 
             // 監聽人員名單
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'allowed_voters'), (snap) => {
                 state.votersList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 render();
-            });
+            }, (err) => console.error("Voters listener error:", err));
         }
 
         // --- 核心操作函數 ---
@@ -125,6 +133,7 @@
         };
 
         window.handleVote = async (pollId, optionIndex) => {
+            if (!state.user) return;
             const hasVoted = state.votes.some(v => v.pollId === pollId && v.voterName === state.currentUser);
             if (hasVoted) return alert("您已投過票囉！");
             
@@ -139,12 +148,14 @@
         };
 
         window.togglePollStatus = async (id, status) => {
+            if (!state.user) return;
             try {
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'polls', id), { isEnded: !status });
             } catch (err) { console.error(err); }
         };
 
         window.handleAddPoll = async (e) => {
+            if (!state.user) return;
             e.preventDefault();
             const question = document.getElementById('new-question').value;
             const optionInputs = document.querySelectorAll('.new-option-input');
@@ -162,6 +173,7 @@
         };
 
         window.handleAddVoter = async (e) => {
+            if (!state.user) return;
             e.preventDefault();
             const name = document.getElementById('new-voter-name').value;
             if (!name.trim()) return;
@@ -172,6 +184,7 @@
         };
 
         window.handleDeleteVoter = async (id) => {
+            if (!state.user) return;
             if (!confirm("確定要移除此成員嗎？")) return;
             try {
                 await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'allowed_voters', id));
@@ -182,6 +195,9 @@
             state.showDetails[id] = !state.showDetails[id];
             render();
         };
+
+        // 將 render 函數暴露給 window，解決 ReferenceError
+        window.render = render;
 
         // --- 渲染 UI ---
         function render() {
@@ -397,8 +413,9 @@
         }
 
         // 啟動系統
-        initAuth();
-        render();
+        window.onload = async () => {
+            await initAuth();
+        };
 
     </script>
 </body>
