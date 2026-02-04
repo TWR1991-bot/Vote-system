@@ -1,0 +1,524 @@
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getFirestore, collection, doc, setDoc, getDoc, 
+  addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp 
+} from 'firebase/firestore';
+import { 
+  getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  Plus, LogOut, CheckCircle, BarChart2, Users, 
+  Lock, Trash2, PieChart, Activity, User, UserPlus, Settings, Eye, EyeOff, LayoutDashboard, ShieldCheck
+} from 'lucide-react';
+
+// --- Firebase 配置 ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'voting-app-demo';
+
+// --- 常數定義 ---
+const SUPER_ADMIN = "Admin01";
+const ADMIN_PASSWORD = "76380260";
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null); // 存儲當前登入者姓名
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [polls, setPolls] = useState([]);
+  const [votes, setVotes] = useState([]);
+  const [votersList, setVotersList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("voting"); // "voting", "manage", "users"
+
+  // 1. 初始化 Auth
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. 獲取數據
+  useEffect(() => {
+    if (!user) return;
+
+    const pollsCol = collection(db, 'artifacts', appId, 'public', 'data', 'polls');
+    const unsubPolls = onSnapshot(pollsCol, (snapshot) => {
+      const p = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPolls(p.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+    });
+
+    const votesCol = collection(db, 'artifacts', appId, 'public', 'data', 'votes');
+    const unsubVotes = onSnapshot(votesCol, (snapshot) => {
+      setVotes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    const votersCol = collection(db, 'artifacts', appId, 'public', 'data', 'allowed_voters');
+    const unsubVoters = onSnapshot(votersCol, (snapshot) => {
+      setVotersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubPolls();
+      unsubVotes();
+      unsubVoters();
+    };
+  }, [user]);
+
+  // 登入處理
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const usernameInput = formData.get("username");
+    const passwordInput = formData.get("password") || "";
+
+    if (usernameInput === SUPER_ADMIN) {
+      if (passwordInput === ADMIN_PASSWORD) {
+        setIsLoggedIn(true);
+        setCurrentUser(SUPER_ADMIN);
+      } else {
+        alert("管理員密碼錯誤");
+      }
+    } else if (usernameInput) {
+      setIsLoggedIn(true);
+      setCurrentUser(usernameInput);
+    } else {
+      alert("請選擇有效的帳號");
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+    setActiveTab("voting");
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {!isLoggedIn ? (
+        <LoginPage onLogin={handleLogin} votersList={votersList} />
+      ) : (
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          {/* Header */}
+          <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                <CheckCircle className="text-blue-600" />
+                企業內部投票系統
+              </h1>
+              <p className="text-slate-500 text-sm mt-1 flex items-center gap-1">
+                <User size={14} /> 使用者: <span className="font-semibold text-blue-600">{currentUser}</span> 
+                {currentUser === SUPER_ADMIN ? (
+                  <span className="ml-2 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                    <ShieldCheck size={12} /> 系統管理員
+                  </span>
+                ) : (
+                  <span className="ml-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs flex items-center gap-1">
+                    <UserPlus size={12} /> 授權發起人
+                  </span>
+                )}
+              </p>
+            </div>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-slate-500 hover:text-red-600 transition-colors font-medium text-sm">
+              <LogOut size={18} /> 登出
+            </button>
+          </header>
+
+          {/* 功能切換頁籤 */}
+          <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-100 mb-8 overflow-x-auto">
+            <button 
+              onClick={() => setActiveTab("voting")}
+              className={`flex-1 min-w-[100px] py-3 rounded-lg flex items-center justify-center gap-2 font-bold transition-all ${activeTab === "voting" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              <Activity size={18} /> 我要投票
+            </button>
+            <button 
+              onClick={() => setActiveTab("manage")}
+              className={`flex-1 min-w-[100px] py-3 rounded-lg flex items-center justify-center gap-2 font-bold transition-all ${activeTab === "manage" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              <LayoutDashboard size={18} /> 投票管理
+            </button>
+            
+            {/* 僅限 Admin01 顯示人員管理頁籤 */}
+            {currentUser === SUPER_ADMIN && (
+              <button 
+                onClick={() => setActiveTab("users")}
+                className={`flex-1 min-w-[100px] py-3 rounded-lg flex items-center justify-center gap-2 font-bold transition-all ${activeTab === "users" ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+              >
+                <Settings size={18} /> 人員工作檯
+              </button>
+            )}
+          </div>
+
+          {/* 內容顯示區域 */}
+          {activeTab === "voting" && (
+            <VoterView polls={polls} votes={votes} voterName={currentUser} appId={appId} />
+          )}
+
+          {activeTab === "manage" && (
+            <AdminPollManager polls={polls} votes={votes} appId={appId} />
+          )}
+
+          {/* 增加安全判斷，防止非管理員進入 */}
+          {activeTab === "users" && currentUser === SUPER_ADMIN && (
+            <PersonnelManager votersList={votersList} appId={appId} />
+          )}
+          
+          {activeTab === "users" && currentUser !== SUPER_ADMIN && (
+            <div className="bg-white p-20 text-center rounded-3xl border border-dashed border-slate-300">
+               <Lock className="mx-auto text-slate-300 mb-4" size={48} />
+               <h3 className="text-xl font-bold text-slate-500">權限不足</h3>
+               <p className="text-slate-400 mt-2">人員工作檯僅限系統管理員 Admin01 使用。</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- 登入組件 (選單式) ---
+function LoginPage({ onLogin, votersList }) {
+  const [selectedUser, setSelectedUser] = useState("");
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-md p-8 rounded-3xl shadow-xl border border-slate-100">
+        <div className="text-center mb-8">
+          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+            <Lock className="text-white" size={32} />
+          </div>
+          <h2 className="text-3xl font-bold text-slate-800">登入系統</h2>
+          <p className="text-slate-500 mt-2">請選擇您的帳號進入系統</p>
+        </div>
+        
+        <form onSubmit={onLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">人員帳號</label>
+            <select 
+              name="username"
+              required
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-white cursor-pointer"
+            >
+              <option value="">請選擇帳號</option>
+              <option value={SUPER_ADMIN} className="font-bold text-purple-600">【系統管理員】Admin01</option>
+              {votersList.map(v => (
+                <option key={v.id} value={v.name}>{v.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {selectedUser === SUPER_ADMIN && (
+            <div className="animate-in fade-in slide-in-from-top-2">
+              <label className="block text-sm font-semibold text-slate-700 mb-1">管理員密碼</label>
+              <input 
+                name="password"
+                type="password"
+                required
+                placeholder="請輸入管理密碼"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+          )}
+          
+          <button 
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5"
+          >
+            確認登入
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// --- 投票內容管理 (授權人員皆可使用) ---
+function AdminPollManager({ polls, votes, appId }) {
+  const [showAddPoll, setShowAddPoll] = useState(false);
+  const [newQuestion, setNewQuestion] = useState("");
+  const [newOptions, setNewOptions] = useState(["", ""]);
+
+  const handleAddPoll = async (e) => {
+    e.preventDefault();
+    if (!newQuestion || newOptions.some(opt => !opt.trim())) {
+      alert("請完整填寫投票內容");
+      return;
+    }
+    try {
+      const pollsCol = collection(db, 'artifacts', appId, 'public', 'data', 'polls');
+      await addDoc(pollsCol, {
+        question: newQuestion,
+        options: newOptions,
+        isEnded: false,
+        createdAt: serverTimestamp()
+      });
+      setNewQuestion("");
+      setNewOptions(["", ""]);
+      setShowAddPoll(false);
+    } catch (err) { console.error(err); }
+  };
+
+  const togglePollStatus = async (pollId, currentStatus) => {
+    try {
+      const pollRef = doc(db, 'artifacts', appId, 'public', 'data', 'polls', pollId);
+      await updateDoc(pollRef, { isEnded: !currentStatus });
+    } catch (err) { console.error(err); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-bold text-slate-800">投票活動控管</h3>
+        <button onClick={() => setShowAddPoll(!showAddPoll)} className="bg-blue-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition-all text-sm font-semibold">
+          <Plus size={18} /> {showAddPoll ? "取消新增" : "發起新投票"}
+        </button>
+      </div>
+
+      {showAddPoll && (
+        <div className="bg-white p-6 rounded-2xl shadow-md border border-blue-100 animate-in fade-in slide-in-from-top-4">
+          <form onSubmit={handleAddPoll} className="space-y-4">
+            <input type="text" placeholder="投票主題內容" value={newQuestion} onChange={(e) => setNewQuestion(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="space-y-2">
+              {newOptions.map((opt, i) => (
+                <div key={i} className="flex gap-2">
+                  <input type="text" value={opt} onChange={(e) => {
+                    const opts = [...newOptions]; opts[i] = e.target.value; setNewOptions(opts);
+                  }} placeholder={`選項 ${i+1}`} className="flex-1 px-4 py-2 rounded-lg border border-slate-200" />
+                  {newOptions.length > 2 && <button type="button" onClick={() => setNewOptions(newOptions.filter((_, idx) => idx !== i))} className="text-red-400"><Trash2 size={18} /></button>}
+                </div>
+              ))}
+              <button type="button" onClick={() => setNewOptions([...newOptions, ""])} className="text-blue-600 text-sm font-bold">+ 增加選項</button>
+            </div>
+            <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">正式發布投票</button>
+          </form>
+        </div>
+      )}
+
+      <div className="grid gap-4">
+        {polls.map(poll => (
+          <PollCard 
+            key={poll.id} 
+            poll={poll} 
+            votes={votes.filter(v => v.pollId === poll.id)} 
+            onToggle={() => togglePollStatus(poll.id, poll.isEnded)}
+            isAdminView={true}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// --- 人員清單管理 (僅限 Admin01 使用) ---
+function PersonnelManager({ votersList, appId }) {
+  const [newVoterName, setNewVoterName] = useState("");
+
+  const handleAddVoter = async (e) => {
+    e.preventDefault();
+    if (!newVoterName.trim()) return;
+    if (votersList.some(v => v.name === newVoterName.trim())) {
+      alert("此人員已在名單中");
+      return;
+    }
+    try {
+      const votersCol = collection(db, 'artifacts', appId, 'public', 'data', 'allowed_voters');
+      await addDoc(votersCol, { name: newVoterName.trim(), createdAt: serverTimestamp() });
+      setNewVoterName("");
+    } catch (err) { console.error(err); }
+  };
+
+  const handleDeleteVoter = async (id) => {
+    if (!window.confirm("確定要移除此成員嗎？其發起權限也將被收回。")) return;
+    try {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'allowed_voters', id));
+    } catch (err) { console.error(err); }
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-100">
+      <div className="mb-8">
+        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Settings className="text-purple-500" /> 系統人員管理台</h3>
+        <p className="text-slate-500 text-sm mt-1">此區域僅管理員可見。您可以新增或刪除同仁，獲得授權的同仁將具備發起投票之權限。</p>
+      </div>
+
+      <form onSubmit={handleAddVoter} className="flex gap-3 mb-8">
+        <input 
+          type="text" 
+          placeholder="輸入同仁姓名" 
+          value={newVoterName}
+          onChange={(e) => setNewVoterName(e.target.value)}
+          className="flex-1 px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button type="submit" className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-purple-700 transition-all">新增成員並授權</button>
+      </form>
+
+      <div className="divide-y divide-slate-100 border rounded-2xl overflow-hidden">
+        {votersList.length === 0 ? (
+          <div className="p-10 text-center text-slate-400 font-medium">目前名單內無任何人員</div>
+        ) : (
+          votersList.map(v => (
+            <div key={v.id} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
+              <span className="font-semibold text-slate-700 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                {v.name}
+              </span>
+              <button onClick={() => handleDeleteVoter(v.id)} className="text-slate-300 hover:text-red-500 transition-colors p-2">
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// --- 投票與結果卡片 ---
+function PollCard({ poll, votes, onToggle, isAdminView = false }) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  return (
+    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <span className={`text-[10px] uppercase font-black px-2 py-0.5 rounded-full ${poll.isEnded ? 'bg-slate-100 text-slate-500' : 'bg-green-100 text-green-700'}`}>
+            {poll.isEnded ? "已結束" : "進行中"}
+          </span>
+          <h4 className="text-lg font-bold text-slate-800 mt-2">{poll.question}</h4>
+        </div>
+        {isAdminView && onToggle && (
+          <button onClick={onToggle} className={`px-4 py-2 rounded-xl text-sm font-bold ${poll.isEnded ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+            {poll.isEnded ? "重新開啟" : "結束投票"}
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 text-xs">
+        <span className="text-slate-400">總票數: {votes.length}</span>
+        {isAdminView && (
+          <button 
+            onClick={() => setShowDetails(!showDetails)}
+            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold ml-auto"
+          >
+            {showDetails ? <EyeOff size={14} /> : <Eye size={14} />}
+            {showDetails ? "隱藏明細" : "查看詳細票選名單"}
+          </button>
+        )}
+      </div>
+
+      {(poll.isEnded || (isAdminView && showDetails)) && (
+        <div className="mt-6 space-y-4 pt-4 border-t border-slate-50 animate-in fade-in slide-in-from-top-2">
+          {poll.options.map((opt, i) => {
+            const optionVotes = votes.filter(v => v.pollId === poll.id && v.optionIndex === i);
+            const count = optionVotes.length;
+            const percentage = votes.length > 0 ? Math.round((count / votes.length) * 100) : 0;
+            
+            return (
+              <div key={i} className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium text-slate-700">{opt}</span>
+                  <span className="font-bold text-slate-900">{count} 票 ({percentage}%)</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${percentage}%` }} />
+                </div>
+                {isAdminView && showDetails && count > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {optionVotes.map((v, idx) => (
+                      <span key={idx} className="bg-slate-50 border border-slate-100 text-slate-500 text-[10px] px-2 py-0.5 rounded-md">
+                         {v.voterName}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- 投票視圖 ---
+function VoterView({ polls, votes, voterName, appId }) {
+  const activePolls = polls.filter(p => !p.isEnded);
+  const endedPolls = polls.filter(p => p.isEnded);
+
+  const handleVote = async (pollId, optionIndex) => {
+    const hasVoted = votes.some(v => v.pollId === pollId && v.voterName === voterName);
+    if (hasVoted) { alert("此題您已投過票囉！"); return; }
+    try {
+      const votesCol = collection(db, 'artifacts', appId, 'public', 'data', 'votes');
+      await addDoc(votesCol, { pollId, optionIndex, voterName, timestamp: serverTimestamp() });
+      alert("投票成功！");
+    } catch (err) { console.error(err); }
+  };
+
+  return (
+    <div className="space-y-8">
+      <section className="space-y-4">
+        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><Activity className="text-green-500" /> 進行中的投票</h3>
+        {activePolls.length === 0 ? (
+          <div className="p-10 text-center bg-white rounded-2xl text-slate-400">目前沒有進行中的活動</div>
+        ) : (
+          activePolls.map(poll => {
+            const hasVoted = votes.some(v => v.pollId === poll.id && v.voterName === voterName);
+            return (
+              <div key={poll.id} className="bg-white p-8 rounded-3xl shadow-md border border-slate-100 relative">
+                {hasVoted && <div className="absolute top-4 right-4 bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">已完成</div>}
+                <h4 className="text-xl font-bold text-slate-800 mb-6">{poll.question}</h4>
+                <div className="grid gap-3">
+                  {poll.options.map((opt, i) => (
+                    <button 
+                      key={i} disabled={hasVoted} onClick={() => handleVote(poll.id, i)}
+                      className={`w-full py-4 px-6 rounded-2xl text-left border-2 font-bold transition-all ${hasVoted ? 'bg-slate-50 border-slate-100 text-slate-400 cursor-default' : 'bg-white border-slate-100 hover:border-blue-500 hover:bg-blue-50'}`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2"><BarChart2 className="text-blue-500" /> 已揭曉結果</h3>
+        <div className="grid gap-4">
+          {endedPolls.map(poll => (
+            <PollCard key={poll.id} poll={poll} votes={votes.filter(v => v.pollId === poll.id)} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
