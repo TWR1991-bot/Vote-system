@@ -11,6 +11,7 @@
         .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
         .poll-card { transition: transform 0.2s; }
         .poll-card:hover { transform: translateY(-2px); }
+        .option-row:nth-child(1) .btn-remove, .option-row:nth-child(2) .btn-remove { display: none; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8">
@@ -19,7 +20,7 @@
         <div id="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
             <div class="bg-white p-6 rounded-lg shadow-xl text-center">
                 <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p>處理中，請稍候...</p>
+                <p id="loading-text">處理中，請稍候...</p>
             </div>
         </div>
 
@@ -28,28 +29,30 @@
             <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">公司投票系統</h1>
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700">帳號</label>
-                    <input type="text" id="login-user" class="w-full p-3 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <label class="block text-sm font-medium text-gray-700">請選擇您的帳號</label>
+                    <select id="login-user" class="w-full p-3 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">載入人員名單中...</option>
+                    </select>
                 </div>
                 <div id="password-field" class="hidden">
                     <label class="block text-sm font-medium text-gray-700">管理員密碼</label>
                     <input type="password" id="login-pass" class="w-full p-3 mt-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
-                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">登入</button>
+                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition">登入系統</button>
             </div>
         </div>
 
         <!-- 主要內容區 (登入後顯示) -->
         <div id="main-view" class="hidden space-y-6">
-            <header class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm gap-4">
+            <header class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm gap-4 border-b border-gray-100">
                 <div>
                     <h2 class="text-2xl font-bold text-gray-800">歡迎, <span id="display-user"></span></h2>
                     <p id="role-tag" class="text-sm text-blue-600 font-medium"></p>
                 </div>
                 <div class="flex gap-2">
-                    <button id="admin-btn" onclick="showAdminPanel()" class="hidden bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">人員管理</button>
-                    <button onclick="showCreatePoll()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700">發起投票</button>
-                    <button onclick="logout()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300">登出</button>
+                    <button id="admin-btn" onclick="showAdminPanel()" class="hidden bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 shadow-sm transition">人員管理</button>
+                    <button onclick="showCreatePoll()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 shadow-sm transition">發起投票</button>
+                    <button onclick="logout()" class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition">登出</button>
                 </div>
             </header>
 
@@ -64,10 +67,10 @@
                 <button onclick="closeModal('admin-panel')" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl">&times;</button>
                 <h3 class="text-xl font-bold mb-6">人員管理 (Admin Only)</h3>
                 <div class="flex gap-2 mb-6">
-                    <input type="text" id="new-username" placeholder="輸入新員工帳號" class="flex-1 border p-2 rounded-lg">
-                    <button onclick="addNewUser()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">新增</button>
+                    <input type="text" id="new-username" placeholder="輸入新人員帳號" class="flex-1 border p-2 rounded-lg outline-none focus:ring-2 focus:ring-purple-500">
+                    <button onclick="addNewUser()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">新增</button>
                 </div>
-                <div class="max-h-60 overflow-y-auto border rounded-lg p-4" id="user-list-items">
+                <div class="max-h-60 overflow-y-auto border rounded-lg divide-y" id="user-list-items">
                     <!-- 使用者名單 -->
                 </div>
             </div>
@@ -80,21 +83,28 @@
                 <h3 class="text-xl font-bold mb-6">發起新投票</h3>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-sm font-medium mb-1">投票主題</label>
-                        <input type="text" id="poll-title" class="w-full border p-2 rounded-lg">
+                        <label class="block text-sm font-medium mb-1 text-gray-700">投票主題</label>
+                        <input type="text" id="poll-title" class="w-full border p-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如：下次聚餐地點？">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1">投票類型</label>
-                        <select id="poll-type" class="w-full border p-2 rounded-lg">
-                            <option value="single">單選</option>
-                            <option value="multiple">複選</option>
+                        <label class="block text-sm font-medium mb-1 text-gray-700">投票類型</label>
+                        <select id="poll-type" class="w-full border p-2 rounded-lg bg-white">
+                            <option value="single">單選 (僅能選一項)</option>
+                            <option value="multiple">複選 (可選多項)</option>
                         </select>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1">選項 (每行一個)</label>
-                        <textarea id="poll-options" rows="4" class="w-full border p-2 rounded-lg" placeholder="選項 1&#10;選項 2"></textarea>
+                        <label class="block text-sm font-medium mb-1 text-gray-700">投票選項 (至少需填寫兩個)</label>
+                        <div id="dynamic-options" class="space-y-2 mb-2">
+                            <!-- 選項欄位會動態插入 -->
+                        </div>
+                        <button onclick="addOptionField()" class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center">
+                            <span class="text-lg mr-1">+</span> 新增選項欄位
+                        </button>
                     </div>
-                    <button onclick="submitNewPoll()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">發佈投票</button>
+                    <div class="pt-4">
+                        <button onclick="submitNewPoll()" class="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md transition">發佈投票議題</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -111,22 +121,53 @@
         let isAdmin = false;
         let appData = { users: [], polls: [], votes: [] };
 
-        // 監聽管理員帳號輸入
-        document.getElementById('login-user').addEventListener('input', (e) => {
-            const field = document.getElementById('password-field');
-            if (e.target.value === ADMIN_ID) {
-                field.classList.remove('hidden');
-            } else {
-                field.classList.add('hidden');
+        // 初始化
+        window.onload = async () => {
+            setLoading(true, "正在連線資料庫...");
+            try {
+                await refreshData();
+                initLoginDropdown();
+            } catch (err) {
+                alert("無法連線至後端服務，請確認 GAS 網址是否正確。");
+            } finally {
+                setLoading(false);
             }
-        });
+        };
+
+        // 初始化登入下拉選單
+        function initLoginDropdown() {
+            const select = document.getElementById('login-user');
+            select.innerHTML = '<option value="">-- 請選擇您的帳號 --</option>';
+            
+            // 加入 Admin
+            const adminOpt = document.createElement('option');
+            adminOpt.value = ADMIN_ID;
+            adminOpt.textContent = `(管理員) ${ADMIN_ID}`;
+            select.appendChild(adminOpt);
+
+            // 加入其餘人員
+            appData.users.forEach(user => {
+                if(user.username !== ADMIN_ID) {
+                    const opt = document.createElement('option');
+                    opt.value = user.username;
+                    opt.textContent = user.username;
+                    select.appendChild(opt);
+                }
+            });
+
+            // 監聽變化顯示密碼
+            select.onchange = (e) => {
+                const field = document.getElementById('password-field');
+                field.classList.toggle('hidden', e.target.value !== ADMIN_ID);
+            };
+        }
 
         // 登入邏輯
         async function handleLogin() {
-            const user = document.getElementById('login-user').value.trim();
+            const user = document.getElementById('login-user').value;
             const pass = document.getElementById('login-pass').value.trim();
 
-            if (!user) return alert('請輸入帳號');
+            if (!user) return alert('請選擇帳號');
 
             if (user === ADMIN_ID) {
                 if (pass !== ADMIN_PASS) return alert('管理員密碼錯誤');
@@ -135,32 +176,15 @@
                 isAdmin = false;
             }
 
-            setLoading(true);
-            try {
-                await refreshData();
-                
-                // 檢查使用者是否存在（除管理員外需在清單中）
-                const exists = appData.users.find(u => u.username === user);
-                if (user !== ADMIN_ID && !exists) {
-                    alert('帳號不存在於系統中，請聯絡管理員。');
-                    setLoading(false);
-                    return;
-                }
-
-                currentUser = user;
-                document.getElementById('login-view').classList.add('hidden');
-                document.getElementById('main-view').classList.remove('hidden');
-                document.getElementById('display-user').innerText = currentUser;
-                document.getElementById('role-tag').innerText = isAdmin ? '系統管理員' : '正式員工';
-                
-                if (isAdmin) document.getElementById('admin-btn').classList.remove('hidden');
-                
-                renderPolls();
-            } catch (err) {
-                alert('登入失敗，請確認 API 設定。');
-            } finally {
-                setLoading(false);
-            }
+            currentUser = user;
+            document.getElementById('login-view').classList.add('hidden');
+            document.getElementById('main-view').classList.remove('hidden');
+            document.getElementById('display-user').innerText = currentUser;
+            document.getElementById('role-tag').innerText = isAdmin ? '系統管理員' : '正式員工';
+            
+            if (isAdmin) document.getElementById('admin-btn').classList.remove('hidden');
+            
+            renderPolls();
         }
 
         // 讀取資料
@@ -177,13 +201,12 @@
             const list = document.getElementById('poll-list');
             list.innerHTML = '';
 
-            // 按時間排序（最新在前）
             const sortedPolls = [...appData.polls].reverse();
 
             sortedPolls.forEach(poll => {
                 const options = JSON.parse(poll.options);
                 const votes = appData.votes.filter(v => v.pollId == poll.id);
-                const hasVoted = votes.some(v => v.username === currentUser);
+                const userVote = votes.find(v => v.username === currentUser);
                 const isCreator = poll.creator === currentUser;
                 const canSeeRealtime = isAdmin || isCreator;
                 const isClosed = poll.status === 'closed';
@@ -194,55 +217,64 @@
                 let content = `
                     <div class="flex justify-between items-start mb-4">
                         <div>
-                            <span class="px-2 py-1 text-xs font-bold rounded ${isClosed ? 'bg-gray-200 text-gray-600' : 'bg-blue-100 text-blue-700'} mb-2 inline-block">
-                                ${isClosed ? '已結算' : '投票中'}
+                            <span class="px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider ${isClosed ? 'bg-gray-200 text-gray-600' : 'bg-blue-100 text-blue-700'} mb-2 inline-block">
+                                ${isClosed ? '已結算' : '進行中'}
                             </span>
                             <h3 class="text-xl font-bold text-gray-800">${poll.title}</h3>
-                            <p class="text-sm text-gray-500">發起人：${poll.creator} | 類型：${poll.type === 'single' ? '單選' : '複選'}</p>
+                            <p class="text-xs text-gray-500 mt-1">發起人：${poll.creator} | 類型：${poll.type === 'single' ? '單選' : '複選'}</p>
                         </div>
-                        ${isAdmin ? `<button onclick="deletePoll('${poll.id}')" class="text-red-500 hover:text-red-700 text-sm">刪除</button>` : ''}
+                        ${isAdmin ? `<button onclick="deletePoll('${poll.id}')" class="text-red-400 hover:text-red-600 text-sm transition">刪除議題</button>` : ''}
                     </div>
                 `;
 
-                if (!isClosed && !hasVoted) {
+                if (!isClosed && !userVote) {
                     // 投票介面
                     content += `<div class="space-y-2 mt-4">`;
                     options.forEach(opt => {
                         const inputType = poll.type === 'single' ? 'radio' : 'checkbox';
                         content += `
-                            <label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+                            <label class="flex items-center p-3 border rounded-xl cursor-pointer hover:bg-gray-50 transition">
                                 <input type="${inputType}" name="poll-${poll.id}" value="${opt}" class="mr-3 w-4 h-4 text-blue-600">
-                                ${opt}
+                                <span class="text-gray-700">${opt}</span>
                             </label>
                         `;
                     });
                     content += `
-                        <button onclick="submitVote('${poll.id}', '${poll.type}')" class="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">提交投票</button>
+                        <button onclick="submitVote('${poll.id}', '${poll.type}')" class="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-sm transition">提交我的投票</button>
                     </div>`;
                 } else {
                     // 結果顯示介面
                     if (isClosed || canSeeRealtime) {
-                        content += `<div class="mt-4 space-y-3">`;
+                        content += `<div class="mt-6 space-y-4">`;
+                        
                         const stats = {};
-                        options.forEach(opt => stats[opt] = 0);
+                        options.forEach(opt => stats[opt] = []); // 改為存人員名單
                         votes.forEach(v => {
                             const choices = JSON.parse(v.choice);
-                            choices.forEach(c => stats[c]++);
+                            choices.forEach(c => {
+                                if (stats[c]) stats[c].push(v.username);
+                            });
                         });
 
-                        const totalVotes = votes.length;
+                        const totalVoters = votes.length;
                         options.forEach(opt => {
-                            const count = stats[opt] || 0;
-                            const percent = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+                            const voters = stats[opt] || [];
+                            const percent = totalVoters > 0 ? Math.round((voters.length / totalVoters) * 100) : 0;
+                            
                             content += `
-                                <div>
-                                    <div class="flex justify-between text-sm mb-1">
-                                        <span>${opt}</span>
-                                        <span class="font-bold">${count} 票 (${percent}%)</span>
+                                <div class="bg-gray-50 p-3 rounded-xl">
+                                    <div class="flex justify-between text-sm mb-1 font-medium">
+                                        <span class="text-gray-800">${opt}</span>
+                                        <span class="text-blue-600">${voters.length} 票 (${percent}%)</span>
                                     </div>
-                                    <div class="w-full bg-gray-200 rounded-full h-2">
-                                        <div class="bg-blue-500 h-2 rounded-full" style="width: ${percent}%"></div>
+                                    <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
+                                        <div class="bg-blue-500 h-1.5 rounded-full" style="width: ${percent}%"></div>
                                     </div>
+                                    ${isClosed ? `
+                                        <div class="text-[11px] text-gray-500">
+                                            <strong>投此項的人：</strong> ${voters.length > 0 ? voters.join(', ') : '無'}
+                                        </div>
+                                    ` : ''}
                                 </div>
                             `;
                         });
@@ -251,16 +283,23 @@
                             const votedUsers = votes.map(v => v.username);
                             const pendingUsers = appData.users.filter(u => !votedUsers.includes(u.username) && u.username !== ADMIN_ID);
                             content += `
-                                <div class="mt-4 p-3 bg-yellow-50 rounded-lg text-xs">
-                                    <p class="font-bold text-yellow-800">未投票名單 (${pendingUsers.length}人)：</p>
-                                    <p class="text-yellow-700">${pendingUsers.map(u => u.username).join(', ') || '無'}</p>
+                                <div class="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-100 text-xs">
+                                    <p class="font-bold text-amber-800 mb-1">未投票名單 (${pendingUsers.length}人)：</p>
+                                    <p class="text-amber-700 leading-relaxed">${pendingUsers.map(u => u.username).join(', ') || '全員已投完'}</p>
                                 </div>
-                                <button onclick="settlePoll('${poll.id}')" class="mt-4 w-full border border-blue-600 text-blue-600 py-2 rounded-lg hover:bg-blue-50">提前結算</button>
+                                <button onclick="settlePoll('${poll.id}')" class="mt-4 w-full border border-blue-600 text-blue-600 py-2 rounded-xl hover:bg-blue-50 transition">提前結束並結算</button>
                             `;
                         }
                         content += `</div>`;
                     } else {
-                        content += `<p class="mt-4 text-center p-4 bg-gray-100 rounded-lg text-gray-600 italic">您已完成投票，請等待發起人結算結果。</p>`;
+                        const myChoices = JSON.parse(userVote.choice);
+                        content += `
+                            <div class="mt-4 p-5 bg-green-50 rounded-2xl text-center border border-green-100">
+                                <p class="text-green-800 font-medium mb-1">您已完成投票</p>
+                                <p class="text-xs text-green-700">選擇了：${myChoices.join(', ')}</p>
+                                <p class="text-[10px] text-green-600 mt-2 italic">請等待發起人或管理員結算後即可查看完整名單。</p>
+                            </div>
+                        `;
                     }
                 }
 
@@ -269,16 +308,37 @@
             });
         }
 
+        // 選項欄位控制
+        function addOptionField(value = "") {
+            const container = document.getElementById('dynamic-options');
+            const div = document.createElement('div');
+            div.className = 'flex gap-2 option-row';
+            div.innerHTML = `
+                <input type="text" class="flex-1 border p-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 poll-opt-input" value="${value}" placeholder="請輸入選項內容">
+                <button onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-2 btn-remove">✕</button>
+            `;
+            container.appendChild(div);
+        }
+
+        // 發起投票彈窗
+        function showCreatePoll() {
+            document.getElementById('poll-modal').classList.remove('hidden');
+            document.getElementById('dynamic-options').innerHTML = '';
+            addOptionField();
+            addOptionField(); // 預設兩個必填
+        }
+
         // 新增投票
         async function submitNewPoll() {
             const title = document.getElementById('poll-title').value.trim();
             const type = document.getElementById('poll-type').value;
-            const optionsRaw = document.getElementById('poll-options').value.trim();
-            const options = optionsRaw.split('\n').map(o => o.trim()).filter(o => o);
+            const inputs = Array.from(document.querySelectorAll('.poll-opt-input'));
+            const options = inputs.map(i => i.value.trim()).filter(v => v);
 
-            if (!title || options.length < 2) return alert('請填寫完整的主題與至少兩個選項');
+            if (!title) return alert('請輸入投票主題');
+            if (options.length < 2) return alert('請至少填寫兩個有效的選項');
 
-            setLoading(true);
+            setLoading(true, "正在建立投票...");
             await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -299,7 +359,7 @@
             const selected = Array.from(document.querySelectorAll(`input[name="poll-${pollId}"]:checked`)).map(i => i.value);
             if (selected.length === 0) return alert('請至少選擇一個選項');
 
-            setLoading(true);
+            setLoading(true, "正在提交...");
             await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -316,8 +376,8 @@
 
         // 結算投票
         async function settlePoll(pollId) {
-            if (!confirm('確定要結算此投票嗎？結算後將無法再投票。')) return;
-            setLoading(true);
+            if (!confirm('確定要結算此投票嗎？結算後將公開所有人的投票明單且無法更改。')) return;
+            setLoading(true, "結算中...");
             await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'settlePoll', pollId })
@@ -329,8 +389,8 @@
 
         // 刪除投票 (Admin)
         async function deletePoll(pollId) {
-            if (!confirm('管理員注意：確定要刪除此投票及其所有記錄嗎？')) return;
-            setLoading(true);
+            if (!confirm('【管理員權限】確定要永久刪除此投票及其所有歷史資料嗎？')) return;
+            setLoading(true, "刪除中...");
             await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'deletePoll', pollId })
@@ -344,15 +404,16 @@
         async function addNewUser() {
             const name = document.getElementById('new-username').value.trim();
             if (!name) return;
-            if (appData.users.some(u => u.username === name)) return alert('此帳號已存在');
+            if (appData.users.some(u => u.username === name) || name === ADMIN_ID) return alert('此帳號已存在');
 
-            setLoading(true);
+            setLoading(true, "正在新增人員...");
             await fetch(GAS_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'addUser', username: name })
             });
             await refreshData();
             updateUserList();
+            initLoginDropdown(); // 同步更新登入下拉選單
             setLoading(false);
             document.getElementById('new-username').value = '';
         }
@@ -360,9 +421,9 @@
         function updateUserList() {
             const container = document.getElementById('user-list-items');
             container.innerHTML = appData.users.map(u => `
-                <div class="flex justify-between py-2 border-b text-sm">
-                    <span>${u.username}</span>
-                    <span class="text-gray-400">正式成員</span>
+                <div class="flex justify-between items-center py-3 px-2 transition hover:bg-gray-50">
+                    <span class="font-medium text-gray-700">${u.username}</span>
+                    <span class="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded">正式成員</span>
                 </div>
             `).join('');
         }
@@ -373,15 +434,12 @@
             updateUserList();
         }
 
-        function showCreatePoll() {
-            document.getElementById('poll-modal').classList.remove('hidden');
-        }
-
         function closeModal(id) {
             document.getElementById(id).classList.add('hidden');
         }
 
-        function setLoading(show) {
+        function setLoading(show, text = "處理中...") {
+            document.getElementById('loading-text').innerText = text;
             document.getElementById('loading').classList.toggle('hidden', !show);
         }
 
